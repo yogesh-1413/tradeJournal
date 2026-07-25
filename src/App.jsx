@@ -4,15 +4,23 @@ import {
   TrendingUp, TrendingDown, Target, Award, Flame, Snowflake, Star, Search,
   Download, X, Copy, RotateCcw, Save, Activity, Percent, Clock, BarChart3,
   Sparkles, Trash2, ChevronDown, Wallet, Gauge, Trophy, ShieldAlert, Filter,
-  ArrowUpRight, ArrowDownRight, Zap
+  ArrowUpRight, ArrowDownRight, Zap, LogOut, Menu, Moon, Sun
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line
 } from "recharts";
 
+import { isFirebaseConfigured, auth, db } from "./firebase";
+import FirebaseConfigModal from "./FirebaseConfigModal";
+import AuthPage from "./AuthPage";
+import { 
+  collection, doc, setDoc, deleteDoc, onSnapshot, query, writeBatch 
+} from "firebase/firestore";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+
 /* ============================== TOKENS ============================== */
-const C = {
+const C_DARK = {
   bg: "#0A0A0C",
   surface: "#111114",
   surface2: "#17171B",
@@ -24,12 +32,39 @@ const C = {
   amber: "#F0B90B",
   amberDim: "rgba(240,185,11,0.10)",
   amberBorder: "rgba(240,185,11,0.35)",
-  green: "#22D67A",
-  greenDim: "rgba(34,214,122,0.10)",
+  green: "#3838f8", // Set profits and longs to Sky Blue
+  greenDim: "rgba(14, 10, 238, 0.1)",
+  greenBorder: "rgba(43, 29, 240, 0.35)",
   red: "#F5455C",
   redDim: "rgba(245,69,92,0.10)",
-  blue: "#5B8DEF",
+  redBorder: "rgba(245,69,92,0.35)",
+  blue: "#2338f0",
 };
+
+const C_LIGHT = {
+  bg: "#F2F1ED",
+  surface: "#FFFFFF",
+  surface2: "#E6E5E0",
+  border: "#CCCCCC",
+  borderLite: "#BBBBBB",
+  text: "#0A0A0C",
+  textDim: "#44444A",
+  textFaint: "#77777D",
+  amber: "#D49E00",
+  amberDim: "rgba(212,158,0,0.10)",
+  amberBorder: "rgba(212,158,0,0.35)",
+  green: "#0284C7", // Set profits and longs to Blue
+  greenDim: "rgba(2, 5, 199, 0.08)",
+  greenBorder: "rgba(15, 2, 199, 0.25)",
+  red: "#D32F2F",
+  redDim: "rgba(211,47,47,0.10)",
+  redBorder: "rgba(211,47,47,0.25)",
+  blue: "#2712df",
+};
+
+const ColorContext = React.createContext(C_DARK);
+
+const getInputStyle = (C) => ({ width: "100%", background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 9, padding: "9px 11px", color: C.text, fontSize: 13.5, fontFamily: FONT.body });
 
 const FONT = {
   display: "'Space Grotesk', sans-serif",
@@ -38,7 +73,7 @@ const FONT = {
 };
 
 const ASSETS = ["BTCUSDT","ETHUSDT","SOLUSDT","XAUUSD","EURUSD","NASDAQ","NIFTY","Custom"];
-const STRATEGIES = ["Breakout","Pullback","Scalping","Swing","ICT","Liquidity Sweep","EMA","VWAP","Custom"];
+const STRATEGIES = ["Breakout","Pullback","Scalping","Swing","ICT-FVG","Liquidity Sweep","Custom"];
 const TIMEFRAMES = ["1m","3m","5m","15m","30m","1H","4H","Daily"];
 const MISTAKE_OPTIONS = ["Entered Early","Exited Early","Moved Stop Loss","Ignored Trend","Over Leveraged","FOMO","Overtrading","No Mistake"];
 const WEEKDAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -58,18 +93,18 @@ const DEFAULT_SETTINGS = {
 const emptyDraft = (settings) => ({
   id: null,
   date: new Date().toISOString().slice(0, 10),
-  entryTime: "09:30",
-  exitTime: "10:00",
-  asset: "BTCUSDT",
+  entryTime: "",
+  exitTime: new Date().toTimeString().slice(0,5),
+  asset: "SOLUSDT",
   customAsset: "",
   direction: "Long",
   entryPrice: "",
   exitPrice: "",
   size: "",
   leverage: settings.defaultLeverage || 1,
-  strategy: "Breakout",
+  strategy: "ICT-FVG",
   customStrategy: "",
-  timeframe: "15m",
+  timeframe: "1m",
   rating: 3,
   mistakes: [],
   notes: "",
@@ -260,19 +295,23 @@ function generateInsights(s) {
 }
 
 /* ============================== SMALL UI ============================== */
-const Card = ({ children, style, className = "" }) => (
-  <div
-    className={`rounded-2xl ${className}`}
-    style={{ background: C.surface, border: `1px solid ${C.border}`, ...style }}
-  >
-    {children}
-  </div>
-);
+const Card = ({ children, style, className = "" }) => {
+  const C = React.useContext(ColorContext);
+  return (
+    <div
+      className={`rounded-2xl ${className}`}
+      style={{ background: C.surface, border: `1px solid ${C.border}`, ...style }}
+    >
+      {children}
+    </div>
+  );
+};
 
 const fmt$ = (n) => (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
 const fmtPct = (n) => `${n >= 0 ? "" : ""}${n.toFixed(1)}%`;
 
 function KpiCard({ label, value, sub, icon: Icon, tone }) {
+  const C = React.useContext(ColorContext);
   const color = tone === "up" ? C.green : tone === "down" ? C.red : C.amber;
   return (
     <Card style={{ padding: "18px 20px" }}>
@@ -287,6 +326,7 @@ function KpiCard({ label, value, sub, icon: Icon, tone }) {
 }
 
 function SectionTitle({ children, icon: Icon }) {
+  const C = React.useContext(ColorContext);
   return (
     <div className="flex items-center gap-2 mb-4">
       {Icon && <Icon size={16} style={{ color: C.amber }} />}
@@ -296,6 +336,7 @@ function SectionTitle({ children, icon: Icon }) {
 }
 
 function ChartTooltip({ active, payload, label }) {
+  const C = React.useContext(ColorContext);
   if (!active || !payload || !payload.length) return null;
   return (
     <div style={{ background: C.surface2, border: `1px solid ${C.borderLite}`, borderRadius: 10, padding: "8px 12px" }}>
@@ -321,58 +362,198 @@ export default function TradingJournal() {
   const [lastDeleted, setLastDeleted] = useState(null);
   const fileAnchor = useRef(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const t = await window.storage.get("trades").catch(() => null);
-        const s = await window.storage.get("settings").catch(() => null);
-        const loadedSettings = s ? JSON.parse(s.value) : DEFAULT_SETTINGS;
-        setSettings(loadedSettings);
-        setTrades(t ? JSON.parse(t.value) : []);
-        setDraft(emptyDraft(loadedSettings));
-      } catch (e) {
-        console.error("load error", e);
-      } finally {
-        setLoaded(true);
-      }
-    })();
-  }, []);
+  const [firebaseConfigured, setFirebaseConfigured] = useState(isFirebaseConfigured);
+  const [user, setUser] = useState(null);
+  const [authLoaded, setAuthLoaded] = useState(false);
+  const [dbLoaded, setDbLoaded] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem("journal_theme") || "dark");
+
+  const toggleTheme = () => {
+    const next = theme === "light" ? "dark" : "light";
+    setTheme(next);
+    localStorage.setItem("journal_theme", next);
+  };
+
+  const C = theme === "light" ? C_LIGHT : C_DARK;
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2200); };
 
-  const persistTrades = async (next) => {
-    setTrades(next);
-    try { await window.storage.set("trades", JSON.stringify(next)); } catch (e) { console.error(e); }
-  };
+  // Hook into auth state changed
+  useEffect(() => {
+    if (!firebaseConfigured) {
+      setAuthLoaded(true);
+      setDbLoaded(true);
+      return;
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoaded(true);
+      if (!currentUser) {
+        setDbLoaded(true);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [firebaseConfigured]);
+
+  // Sync with Firestore when authenticated user is present
+  useEffect(() => {
+    if (!user) {
+      setTrades([]);
+      setSettings(DEFAULT_SETTINGS);
+      return;
+    }
+
+    setDbLoaded(false);
+
+    // Migration helper to sync old window.storage data to Firebase Firestore
+    const migrateLocalData = async (uid) => {
+      try {
+        const localTradesVal = await window.storage?.get("trades").catch(() => null);
+        const localSettingsVal = await window.storage?.get("settings").catch(() => null);
+        
+        if (localTradesVal || localSettingsVal) {
+          const batch = writeBatch(db);
+          let migratedAny = false;
+
+          if (localTradesVal) {
+            const localTrades = JSON.parse(localTradesVal.value);
+            if (Array.isArray(localTrades) && localTrades.length > 0) {
+              localTrades.forEach((t) => {
+                const { id, ...data } = t;
+                const docId = id || Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+                batch.set(doc(db, "users", uid, "trades", docId), data);
+              });
+              migratedAny = true;
+            }
+          }
+
+          if (localSettingsVal) {
+            const localSettings = JSON.parse(localSettingsVal.value);
+            if (localSettings) {
+              batch.set(doc(db, "users", uid, "settings", "default"), localSettings);
+              migratedAny = true;
+            }
+          }
+
+          if (migratedAny) {
+            await batch.commit();
+            await window.storage?.remove("trades").catch(() => null);
+            await window.storage?.remove("settings").catch(() => null);
+            showToast("Migrated local journal data to Firebase!");
+          }
+        }
+      } catch (e) {
+        console.error("Migration failed:", e);
+      }
+    };
+
+    migrateLocalData(user.uid);
+
+    // 1. Listen to trades subcollection
+    const tradesQuery = query(collection(db, "users", user.uid, "trades"));
+    const unsubTrades = onSnapshot(tradesQuery, (snapshot) => {
+      const fetchedTrades = [];
+      snapshot.forEach((doc) => {
+        fetchedTrades.push({ id: doc.id, ...doc.data() });
+      });
+      setTrades(fetchedTrades);
+    }, (err) => {
+      console.error("Trades snapshot error:", err);
+    });
+
+    // 2. Listen to settings document
+    const settingsDoc = doc(db, "users", user.uid, "settings", "default");
+    const unsubSettings = onSnapshot(settingsDoc, (snapshot) => {
+      if (snapshot.exists()) {
+        setSettings(snapshot.data());
+      } else {
+        setSettings(DEFAULT_SETTINGS);
+      }
+      setDbLoaded(true);
+    }, (err) => {
+      console.error("Settings snapshot error:", err);
+      setDbLoaded(true);
+    });
+
+    return () => {
+      unsubTrades();
+      unsubSettings();
+    };
+  }, [user]);
+
+  // Combined loaded state
+  useEffect(() => {
+    if (authLoaded && dbLoaded) {
+      setLoaded(true);
+    } else {
+      setLoaded(false);
+    }
+  }, [authLoaded, dbLoaded]);
+
   const persistSettings = async (next) => {
-    setSettings(next);
-    try { await window.storage.set("settings", JSON.stringify(next)); } catch (e) { console.error(e); }
+    if (!user) return;
+    try {
+      await setDoc(doc(db, "users", user.uid, "settings", "default"), next);
+    } catch (e) {
+      console.error("Error saving settings:", e);
+      showToast("Error saving settings");
+    }
   };
 
-  const saveTrade = () => {
+  const saveTrade = async () => {
     if (!draft.entryPrice || !draft.exitPrice || !draft.size) {
       showToast("Entry price, exit price and size are required");
       return;
     }
+    if (!user) return;
     const record = { ...draft, feePercent: settings.feePercent };
-    if (record.id) {
-      persistTrades(trades.map((t) => (t.id === record.id ? record : t)));
-      showToast("Trade updated");
-    } else {
-      record.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-      persistTrades([...trades, record]);
-      showToast("Trade saved");
+    try {
+      if (record.id) {
+        const { id, ...data } = record;
+        await setDoc(doc(db, "users", user.uid, "trades", id), data);
+        showToast("Trade updated");
+      } else {
+        const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        const { id, ...data } = record;
+        await setDoc(doc(db, "users", user.uid, "trades", newId), data);
+        showToast("Trade saved");
+      }
+      setDraft(emptyDraft(settings));
+    } catch (e) {
+      console.error("Error saving trade:", e);
+      showToast("Error saving trade");
     }
-    setDraft(emptyDraft(settings));
   };
 
-  const deleteTrade = (id) => {
-    const prev = trades;
-    persistTrades(trades.filter((t) => t.id !== id));
-    showToast("Trade deleted");
-    setLastDeleted({ trade: prev.find((t) => t.id === id), all: prev });
+  const deleteTrade = async (id) => {
+    if (!user) return;
+    const targetTrade = trades.find((t) => t.id === id);
+    try {
+      await deleteDoc(doc(db, "users", user.uid, "trades", id));
+      showToast("Trade deleted");
+      setLastDeleted({ trade: targetTrade, all: trades });
+    } catch (e) {
+      console.error("Error deleting trade:", e);
+      showToast("Error deleting trade");
+    }
   };
-  const undoDelete = () => { if (lastDeleted) { persistTrades(lastDeleted.all); setLastDeleted(null); showToast("Delete undone"); } };
+
+  const undoDelete = async () => {
+    if (lastDeleted && user) {
+      try {
+        const { id, ...data } = lastDeleted.trade;
+        await setDoc(doc(db, "users", user.uid, "trades", id), data);
+        setLastDeleted(null);
+        showToast("Delete undone");
+      } catch (e) {
+        console.error("Error undoing delete:", e);
+        showToast("Error undoing delete");
+      }
+    }
+  };
 
   const duplicateLast = () => {
     if (!trades.length) { showToast("No previous trade to duplicate"); return; }
@@ -415,10 +596,26 @@ export default function TradingJournal() {
     URL.revokeObjectURL(url);
   };
 
-  if (!loaded) {
+  if (!firebaseConfigured) {
+    return <FirebaseConfigModal onConfigured={() => setFirebaseConfigured(true)} />;
+  }
+
+  if (!authLoaded) {
     return (
-      <div style={{ background: C.bg, minHeight: 500 }} className="flex items-center justify-center">
-        <div style={{ color: C.amber, fontFamily: FONT.mono, fontSize: 13 }}>Loading journal…</div>
+      <div style={{ background: C.bg, minHeight: 500 }} className="flex items-center justify-center w-screen h-screen">
+        <div style={{ color: C.amber, fontFamily: FONT.mono, fontSize: 13 }}>Initializing Auth…</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthPage />;
+  }
+
+  if (!dbLoaded) {
+    return (
+      <div style={{ background: C.bg, minHeight: 500 }} className="flex items-center justify-center w-screen h-screen">
+        <div style={{ color: C.amber, fontFamily: FONT.mono, fontSize: 13 }}>Loading Journal Data…</div>
       </div>
     );
   }
@@ -431,7 +628,8 @@ export default function TradingJournal() {
   ];
 
   return (
-    <div style={{ background: C.bg, fontFamily: FONT.body, color: C.text }} className="w-screen min-h-screen rounded-xl overflow-hidden ">
+    <ColorContext.Provider value={C}>
+    <div style={{ background: C.bg, fontFamily: FONT.body, color: C.text }} className="w-screen h-screen overflow-hidden flex flex-col md:flex-row">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
         * { box-sizing: border-box; }
@@ -443,22 +641,87 @@ export default function TradingJournal() {
       `}</style>
       <a ref={fileAnchor} style={{ display: "none" }} />
 
-      <div className="flex min-h-screen ">
-        {/* SIDEBAR */}
-        <div style={{ width: 208, borderRight: `1px solid ${C.border}`, background: C.surface }} className="flex-shrink-0 flex flex-col p-4">
-          <div className="flex items-center gap-2 mb-8 px-1">
+      {/* Mobile Top Header */}
+      <div 
+        className="flex md:hidden items-center justify-between p-4 border-b flex-shrink-0" 
+        style={{ background: C.surface, borderColor: C.border }}
+      >
+        <div className="flex items-center gap-2">
+          <div style={{ width: 24, height: 24, borderRadius: 6, background: C.amberDim, border: `1px solid ${C.amberBorder}` }} className="flex items-center justify-center">
+            <Activity size={13} style={{ color: C.amber }} />
+          </div>
+          <span style={{ fontFamily: FONT.display, fontWeight: 700, fontSize: 14 }}>Ledger</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={toggleTheme} 
+            className="p-1.5 rounded-lg flex items-center justify-center" 
+            style={{ color: C.textDim, background: "transparent", border: "none", cursor: "pointer" }}
+          >
+            {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
+          </button>
+          <button 
+            onClick={() => setSidebarOpen(true)} 
+            className="p-1.5 rounded-lg flex items-center justify-center" 
+            style={{ color: C.textDim, background: "transparent", border: `1px solid ${C.border}`, cursor: "pointer" }}
+          >
+            <Menu size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* SIDEBAR */}
+      <div 
+        style={{ 
+          width: 208, 
+          borderRight: `1px solid ${C.border}`, 
+          background: C.surface,
+          zIndex: 50,
+        }} 
+        className={`flex-shrink-0 flex flex-col p-4 h-full overflow-y-auto transition-transform duration-300
+          fixed md:static inset-y-0 left-0 
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+        `}
+      >
+        <div className="flex items-center justify-between mb-8 px-1">
+          <div className="flex items-center gap-2">
             <div style={{ width: 28, height: 28, borderRadius: 8, background: C.amberDim, border: `1px solid ${C.amberBorder}` }} className="flex items-center justify-center">
               <Activity size={15} style={{ color: C.amber }} />
             </div>
             <span style={{ fontFamily: FONT.display, fontWeight: 700, fontSize: 15 }}>Ledger</span>
           </div>
-          <div className="flex flex-col gap-1">
-            {nav.map((n) => {
-              const active = page === n.id;
-              return (
-                <button
-                  key={n.id}
-                  onClick={() => setPage(n.id)}
+          <div className="flex items-center gap-1">
+            <button 
+              onClick={toggleTheme} 
+              className="p-1 rounded-lg flex items-center justify-center" 
+              style={{ color: C.textDim, background: "transparent", border: "none", cursor: "pointer" }}
+            >
+              {theme === "light" ? <Moon size={15} /> : <Sun size={15} />}
+            </button>
+            <button 
+              onClick={() => setSidebarOpen(false)} 
+              className="md:hidden p-1 flex items-center justify-center" 
+              style={{ color: C.textDim, background: "transparent", border: "none", cursor: "pointer" }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1">
+          {nav.map((n) => {
+            const active = page === n.id;
+            return (
+              <button
+                key={n.id}
+                onClick={() => { setPage(n.id); setSidebarOpen(false); }}
                   className="flex items-center gap-2.5 rounded-lg transition-colors"
                   style={{
                     padding: "9px 12px",
@@ -483,11 +746,39 @@ export default function TradingJournal() {
             <button onClick={exportCSV} className="flex items-center gap-2 mt-4 w-full rounded-lg" style={{ padding: "8px 12px", background: "transparent", border: `1px solid ${C.border}`, color: C.textDim, fontSize: 12.5, cursor: "pointer" }}>
               <Download size={13} /> Export CSV
             </button>
+
+            {/* User Profile Info */}
+            <div className="mt-4 pt-4 flex flex-col gap-2" style={{ borderTop: `1px solid ${C.border}` }}>
+              <div className="flex items-center gap-2 px-1">
+                {user.photoURL ? (
+                  <img src={user.photoURL} alt="profile" style={{ width: 24, height: 24, borderRadius: "50%", border: `1px solid ${C.amberBorder}` }} />
+                ) : (
+                  <div style={{ width: 24, height: 24, borderRadius: "50%", background: C.surface2, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center" }} className="flex justify-center items-center">
+                    <span style={{ fontSize: 10, fontWeight: "bold", color: C.textDim }}>{user.isAnonymous ? "G" : (user.email ? user.email[0].toUpperCase() : "U")}</span>
+                  </div>
+                )}
+                <div className="flex-1 min-w-0 text-left">
+                  <div style={{ fontSize: 12, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {user.isAnonymous ? "Guest User" : "Yogesh"}
+                  </div>
+                  <div style={{ fontSize: 10, color: C.textFaint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {user.isAnonymous ? "Temporary session" : user.email}
+                  </div>
+                </div>
+              </div>
+              <button 
+                onClick={() => signOut(auth)} 
+                className="flex items-center gap-2 w-full rounded-lg text-left" 
+                style={{ padding: "6px 12px", background: "transparent", border: "none", color: C.red, fontSize: 12, cursor: "pointer" }}
+              >
+                <LogOut size={13} /> Sign Out
+              </button>
+            </div>
           </div>
         </div>
 
         {/* MAIN */}
-        <div className="flex-1 min-w-0" style={{ padding: "24px 28px", maxHeight: 900, overflowY: "auto" }}>
+        <div className="flex-1 min-w-0 h-full overflow-y-auto" style={{ padding: "24px 28px" }}>
           {page === "dashboard" && (
             <DashboardPage stats={stats} insights={insights} timeFilter={timeFilter} setTimeFilter={setTimeFilter} settings={settings} />
           )}
@@ -499,7 +790,6 @@ export default function TradingJournal() {
           )}
           {page === "settings" && <SettingsPage settings={settings} onSave={persistSettings} />}
         </div>
-      </div>
 
       {toast && (
         <div style={{ position: "fixed", bottom: 20, right: 20, background: C.surface2, border: `1px solid ${C.amberBorder}`, color: C.text, padding: "10px 16px", borderRadius: 10, fontFamily: FONT.body, fontSize: 13, zIndex: 50 }}>
@@ -507,6 +797,7 @@ export default function TradingJournal() {
         </div>
       )}
     </div>
+    </ColorContext.Provider>
   );
 }
 
@@ -514,6 +805,7 @@ export default function TradingJournal() {
 const TIME_FILTERS = ["Today","Last 7 Days","Last 30 Days","This Month","YTD","All Time"];
 
 function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings }) {
+  const C = React.useContext(ColorContext);
   if (stats.total === 0) {
     return (
       <div className="h-full flex flex-col items-center justify-center" style={{ minHeight: 480 }}>
@@ -554,7 +846,7 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings })
       </div>
 
       {/* KPI GRID */}
-      <div className="grid grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
         <KpiCard label="Net Profit" value={fmt$(stats.netProfit)} icon={Wallet} tone={stats.netProfit >= 0 ? "up" : "down"} sub={`${stats.total} trades`} />
         <KpiCard label="Win Rate" value={`${stats.winRate.toFixed(1)}%`} icon={Target} sub={`${stats.wins.length}W / ${stats.losses.length}L`} />
         <KpiCard label="Profit Factor" value={isFinite(stats.profitFactor) ? stats.profitFactor.toFixed(2) : "∞"} icon={Gauge} />
@@ -570,8 +862,8 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings })
       </div>
 
       {/* CHARTS ROW 1 */}
-      <div className="grid grid-cols-3 gap-3 mb-3">
-        <Card style={{ padding: 18, gridColumn: "span 2" }}>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
+        <Card className="col-span-1 lg:col-span-2" style={{ padding: 18 }}>
           <SectionTitle icon={TrendingUp}>Equity Curve</SectionTitle>
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={stats.curve}>
@@ -589,7 +881,7 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings })
             </AreaChart>
           </ResponsiveContainer>
         </Card>
-        <Card style={{ padding: 18 }}>
+        <Card className="col-span-1" style={{ padding: 18 }}>
           <SectionTitle icon={Target}>Win / Loss</SectionTitle>
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
@@ -607,7 +899,7 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings })
       </div>
 
       {/* CHARTS ROW 2 */}
-      <div className="grid grid-cols-3 gap-3 mb-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
         <Card style={{ padding: 18 }}>
           <SectionTitle icon={BarChart3}>Profit by Asset</SectionTitle>
           <ResponsiveContainer width="100%" height={190}>
@@ -653,7 +945,7 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings })
       </div>
 
       {/* SCORES + LONG/SHORT */}
-      <div className="grid grid-cols-3 gap-3 mb-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
         <Card style={{ padding: 18 }}>
           <SectionTitle icon={Gauge}>Long vs Short Win Rate</SectionTitle>
           <ResponsiveContainer width="100%" height={150}>
@@ -686,8 +978,8 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings })
       {/* INSIGHTS */}
       {insights.length > 0 && (
         <Card style={{ padding: 18 }}>
-          <SectionTitle icon={Sparkles}>AI Insights</SectionTitle>
-          <div className="grid grid-cols-2 gap-3">
+          <SectionTitle icon={Sparkles}>Insights</SectionTitle>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {insights.map((ins, i) => (
               <div key={i} className="flex items-start gap-3 rounded-xl" style={{ padding: 14, background: C.surface2, border: `1px solid ${C.border}` }}>
                 <div style={{ width: 28, height: 28, borderRadius: 8, background: C.amberDim, flexShrink: 0 }} className="flex items-center justify-center">
@@ -704,6 +996,7 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings })
 }
 
 function ScoreBar({ label, value }) {
+  const C = React.useContext(ColorContext);
   const color = value >= 66 ? C.green : value >= 40 ? C.amber : C.red;
   return (
     <div className="mb-3">
@@ -718,6 +1011,7 @@ function ScoreBar({ label, value }) {
   );
 }
 function Row({ label, value }) {
+  const C = React.useContext(ColorContext);
   return (
     <div className="flex justify-between items-center">
       <span style={{ fontSize: 12.5, color: C.textDim }}>{label}</span>
@@ -728,6 +1022,7 @@ function Row({ label, value }) {
 
 /* ============================== ENTRY FORM ============================== */
 function Field({ label, children, span }) {
+  const C = React.useContext(ColorContext);
   return (
     <div style={{ gridColumn: span ? `span ${span}` : undefined }}>
       <label style={{ display: "block", fontSize: 11.5, color: C.textFaint, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</label>
@@ -735,9 +1030,10 @@ function Field({ label, children, span }) {
     </div>
   );
 }
-const inputStyle = { width: "100%", background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 9, padding: "9px 11px", color: C.text, fontSize: 13.5, fontFamily: FONT.body };
 
 function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) {
+  const C = React.useContext(ColorContext);
+  const inputStyle = getInputStyle(C);
   const set = (k) => (e) => setDraft({ ...draft, [k]: e.target.value });
   const { net, pnlPercent } = calcPnL(draft, settings);
   const duration = draft.entryTime && draft.exitTime ? calcDurationMin(draft) : 0;
@@ -749,7 +1045,7 @@ function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) 
   };
 
   return (
-    <div style={{ maxWidth: 880 }}>
+    <div className="w-auto">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h2 style={{ fontFamily: FONT.display, fontSize: 22, fontWeight: 700 }}>{draft.id ? "Edit Trade" : "New Trade"}</h2>
@@ -763,7 +1059,7 @@ function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) 
 
       <Card style={{ padding: 22 }}>
         <SectionTitle>Basic Information</SectionTitle>
-        <div className="grid grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
           <Field label="Date"><input type="date" style={inputStyle} value={draft.date} onChange={set("date")} /></Field>
           <Field label="Entry Time"><input type="time" style={inputStyle} value={draft.entryTime} onChange={set("entryTime")} /></Field>
           <Field label="Exit Time"><input type="time" style={inputStyle} value={draft.exitTime} onChange={set("exitTime")} /></Field>
@@ -774,7 +1070,7 @@ function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) 
                   flex: 1, padding: "9px 0", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: "pointer",
                   background: draft.direction === d ? (d === "Long" ? C.greenDim : C.redDim) : C.surface2,
                   color: draft.direction === d ? (d === "Long" ? C.green : C.red) : C.textDim,
-                  border: `1px solid ${draft.direction === d ? (d === "Long" ? "rgba(34,214,122,.4)" : "rgba(245,69,92,.4)") : C.border}`,
+                  border: `1px solid ${draft.direction === d ? (d === "Long" ? C.greenBorder : C.redBorder) : C.border}`,
                 }}>{d}</button>
               ))}
             </div>
@@ -803,7 +1099,7 @@ function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) 
         </div>
 
         <SectionTitle>Trade Details</SectionTitle>
-        <div className="grid grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           <Field label="Entry Price"><input type="number" step="any" style={inputStyle} value={draft.entryPrice} onChange={set("entryPrice")} placeholder="0.00" /></Field>
           <Field label="Exit Price"><input type="number" step="any" style={inputStyle} value={draft.exitPrice} onChange={set("exitPrice")} placeholder="0.00" /></Field>
           <Field label="Position Size"><input type="number" step="any" style={inputStyle} value={draft.size} onChange={set("size")} placeholder="0.00" /></Field>
@@ -811,7 +1107,7 @@ function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) 
         </div>
 
         {/* Auto calc panel */}
-        <div className="grid grid-cols-4 gap-3 mb-6 rounded-xl" style={{ padding: 14, background: C.surface2, border: `1px solid ${C.border}` }}>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6 rounded-xl" style={{ padding: 14, background: C.surface2, border: `1px solid ${C.border}` }}>
           <AutoStat label="Net P&L" value={fmt$(net)} color={net >= 0 ? C.green : C.red} />
           <AutoStat label="ROI %" value={fmtPct(pnlPercent)} color={pnlPercent >= 0 ? C.green : C.red} />
           <AutoStat label="Duration" value={`${duration}m`} color={C.text} />
@@ -819,7 +1115,7 @@ function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) 
         </div>
 
         <SectionTitle>Review</SectionTitle>
-        <div className="grid grid-cols-2 gap-6 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
           <Field label="Trade Rating">
             <div className="flex gap-1">
               {[1, 2, 3, 4, 5].map((n) => (
@@ -859,6 +1155,7 @@ function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) 
   );
 }
 function AutoStat({ label, value, color }) {
+  const C = React.useContext(ColorContext);
   return (
     <div>
       <div style={{ fontSize: 10.5, color: C.textFaint, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 3 }}>{label}</div>
@@ -869,6 +1166,8 @@ function AutoStat({ label, value, color }) {
 
 /* ============================== HISTORY ============================== */
 function HistoryPage({ trades, settings, onEdit, onDelete, lastDeleted, onUndo }) {
+  const C = React.useContext(ColorContext);
+  const inputStyle = getInputStyle(C);
   const [search, setSearch] = useState("");
   const [assetFilter, setAssetFilter] = useState("All");
   const [dirFilter, setDirFilter] = useState("All");
@@ -956,6 +1255,8 @@ function HistoryPage({ trades, settings, onEdit, onDelete, lastDeleted, onUndo }
 
 /* ============================== SETTINGS ============================== */
 function SettingsPage({ settings, onSave }) {
+  const C = React.useContext(ColorContext);
+  const inputStyle = getInputStyle(C);
   const [local, setLocal] = useState(settings);
   const set = (k) => (e) => setLocal({ ...local, [k]: e.target.value });
   const save = () => onSave({
@@ -973,7 +1274,7 @@ function SettingsPage({ settings, onSave }) {
       <h2 style={{ fontFamily: FONT.display, fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Settings</h2>
       <p style={{ fontFamily: FONT.body, fontSize: 13, color: C.textDim, marginBottom: 20 }}>Defaults used to auto-populate trade entry and calculations.</p>
       <Card style={{ padding: 22 }}>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Default Exchange"><input style={inputStyle} value={local.defaultExchange} onChange={set("defaultExchange")} /></Field>
           <Field label="Default Market"><input style={inputStyle} value={local.defaultMarket} onChange={set("defaultMarket")} /></Field>
           <Field label="Default Leverage"><input type="number" style={inputStyle} value={local.defaultLeverage} onChange={set("defaultLeverage")} /></Field>
