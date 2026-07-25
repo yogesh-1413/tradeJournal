@@ -110,6 +110,8 @@ const emptyDraft = (settings) => ({
   notes: "",
   screenshotUrl: "",
   partials: [],
+  entryFee: "",
+  exitFee: "",
 });
 
 /* ============================== CALC ENGINE ============================== */
@@ -155,25 +157,39 @@ function calcPnL(t, settings) {
     }
   });
 
-  // Calculate gross PnL and fees for partial exits
+  // Calculate gross PnL
   processedPartials.forEach((p) => {
     const rawMove = t.direction === "Long" ? p.price - entry : entry - p.price;
     gross += rawMove * p.size;
-    const entryNotional = entry * p.size;
-    const exitNotional = p.price * p.size;
-    totalFees += (entryNotional + exitNotional) * (feePct / 100);
   });
 
-  // Remaining position closes at the main exitPrice
   const remainingSize = Math.max(0, totalSize - totalExitedSize);
   if (remainingSize > 0) {
     const exit = Number(t.exitPrice) || 0;
     const rawMove = t.direction === "Long" ? exit - entry : entry - exit;
     gross += rawMove * remainingSize;
-    
-    const entryNotional = entry * remainingSize;
-    const exitNotional = exit * remainingSize;
-    totalFees += (entryNotional + exitNotional) * (feePct / 100);
+  }
+
+  // Determine fees (Manual entry vs Auto-calculated)
+  const hasManualEntryFee = t.entryFee !== undefined && t.entryFee !== "";
+  const hasManualExitFee = t.exitFee !== undefined && t.exitFee !== "";
+
+  if (hasManualEntryFee || hasManualExitFee) {
+    totalFees = (Number(t.entryFee) || 0) + (Number(t.exitFee) || 0);
+  } else {
+    // Auto-calculate fees
+    processedPartials.forEach((p) => {
+      const entryNotional = entry * p.size;
+      const exitNotional = p.price * p.size;
+      totalFees += (entryNotional + exitNotional) * (feePct / 100);
+    });
+
+    if (remainingSize > 0) {
+      const exit = Number(t.exitPrice) || 0;
+      const entryNotional = entry * remainingSize;
+      const exitNotional = exit * remainingSize;
+      totalFees += (entryNotional + exitNotional) * (feePct / 100);
+    }
   }
 
   const net = gross - totalFees;
@@ -1135,7 +1151,7 @@ function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) 
         </div>
 
         <SectionTitle>Trade Details</SectionTitle>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
           <Field label="Entry Price"><input type="number" step="any" style={inputStyle} value={draft.entryPrice} onChange={set("entryPrice")} placeholder="0.00" /></Field>
           <Field label="Exit Price"><input type="number" step="any" style={inputStyle} value={draft.exitPrice} onChange={set("exitPrice")} placeholder="0.00" /></Field>
           <Field label="Position Size">
@@ -1161,6 +1177,8 @@ function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) 
             />
           </Field>
           <Field label="Leverage (optional)"><input type="number" step="any" style={inputStyle} value={draft.leverage} onChange={set("leverage")} placeholder="1" /></Field>
+          <Field label="Entry Fee (optional)"><input type="number" step="any" style={inputStyle} value={draft.entryFee || ""} onChange={set("entryFee")} placeholder="Auto" /></Field>
+          <Field label="Exit Fee (optional)"><input type="number" step="any" style={inputStyle} value={draft.exitFee || ""} onChange={set("exitFee")} placeholder="Auto" /></Field>
         </div>
 
         <SectionTitle>Partial Exits (Optional)</SectionTitle>
