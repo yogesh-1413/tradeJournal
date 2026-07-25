@@ -642,6 +642,7 @@ export default function TradingJournal() {
     });
   }, [trades, timeFilter, customStart, customEnd]);
 
+  const allTimeStats = useMemo(() => computeStats(trades, settings), [trades, settings]);
   const stats = useMemo(() => computeStats(filteredByTime, settings), [filteredByTime, settings]);
   const insights = useMemo(() => generateInsights(stats), [stats]);
 
@@ -803,8 +804,8 @@ export default function TradingJournal() {
 
           <div className="mt-auto pt-4" style={{ borderTop: `1px solid ${C.border}` }}>
             <div style={{ fontFamily: FONT.mono, fontSize: 11, color: C.textFaint, padding: "4px 12px" }}>EQUITY</div>
-            <div style={{ fontFamily: FONT.mono, fontSize: 18, fontWeight: 700, color: stats.currentEquity >= settings.startingBalance ? C.green : C.red, padding: "0 12px" }}>
-              {fmt$(stats.currentEquity)}
+            <div style={{ fontFamily: FONT.mono, fontSize: 18, fontWeight: 700, color: allTimeStats.currentEquity >= settings.startingBalance ? C.green : C.red, padding: "0 12px" }}>
+              {fmt$(allTimeStats.currentEquity)}
             </div>
             <button onClick={exportCSV} className="flex items-center gap-2 mt-4 w-full rounded-lg" style={{ padding: "8px 12px", background: "transparent", border: `1px solid ${C.border}`, color: C.textDim, fontSize: 12.5, cursor: "pointer" }}>
               <Download size={13} /> Export CSV
@@ -963,8 +964,8 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
         <KpiCard label="Avg Loss" value={fmt$(-stats.avgLoss)} icon={ArrowDownRight} tone="down" />
         <KpiCard label="Largest Win" value={fmt$(stats.largestWin)} icon={Trophy} tone="up" />
         <KpiCard label="Largest Loss" value={fmt$(stats.largestLoss)} icon={ShieldAlert} tone="down" />
-        <KpiCard label="Win Streak" value={stats.curType ? stats.curStreak : 0} icon={Flame} tone="up" />
-        <KpiCard label="Loss Streak" value={!stats.curType ? stats.curStreak : 0} icon={Snowflake} tone="down" />
+        <KpiCard label="Win Streak" value={stats.curType ? stats.curStreak : 0} icon={Snowflake} tone="up" />
+        <KpiCard label="Loss Streak" value={!stats.curType ? stats.curStreak : 0} icon={Flame} tone="down" />
         <KpiCard label="Avg Duration" value={`${Math.round(stats.avgDuration)}m`} icon={Clock} />
         <KpiCard label="Best Asset" value={stats.bestAsset ? stats.bestAsset.key : "—"} icon={Award} sub={stats.bestAsset ? fmt$(stats.bestAsset.net) : ""} />
       </div>
