@@ -109,6 +109,7 @@ const emptyDraft = (settings) => ({
   mistakes: [],
   notes: "",
   screenshotUrl: "",
+  partials: [],
 });
 
 /* ============================== CALC ENGINE ============================== */
@@ -134,18 +135,53 @@ function calcSession(entryTime) {
 
 function calcPnL(t, settings) {
   const entry = Number(t.entryPrice) || 0;
-  const exit = Number(t.exitPrice) || 0;
-  const size = Number(t.size) || 0;
+  const totalSize = Number(t.size) || 0;
   const lev = Number(t.leverage) || 1;
-  const notional = entry * size;
-  const rawMove = t.direction === "Long" ? exit - entry : entry - exit;
-  const gross = rawMove * size;
   const feePct = settings.feePercent ?? 0.05;
-  const fees = notional * (feePct / 100) * 2;
-  const net = gross - fees;
+
+  let gross = 0;
+  let totalFees = 0;
+  let totalExitedSize = 0;
+
+  const partials = t.partials || [];
+  const processedPartials = [];
+  
+  partials.forEach((p) => {
+    const pSize = Number(p.size) || 0;
+    const pPrice = Number(p.price) || 0;
+    if (pSize > 0 && pPrice > 0) {
+      processedPartials.push({ size: pSize, price: pPrice });
+      totalExitedSize += pSize;
+    }
+  });
+
+  // Calculate gross PnL and fees for partial exits
+  processedPartials.forEach((p) => {
+    const rawMove = t.direction === "Long" ? p.price - entry : entry - p.price;
+    gross += rawMove * p.size;
+    const entryNotional = entry * p.size;
+    const exitNotional = p.price * p.size;
+    totalFees += (entryNotional + exitNotional) * (feePct / 100);
+  });
+
+  // Remaining position closes at the main exitPrice
+  const remainingSize = Math.max(0, totalSize - totalExitedSize);
+  if (remainingSize > 0) {
+    const exit = Number(t.exitPrice) || 0;
+    const rawMove = t.direction === "Long" ? exit - entry : entry - exit;
+    gross += rawMove * remainingSize;
+    
+    const entryNotional = entry * remainingSize;
+    const exitNotional = exit * remainingSize;
+    totalFees += (entryNotional + exitNotional) * (feePct / 100);
+  }
+
+  const net = gross - totalFees;
+  const notional = entry * totalSize;
   const margin = lev > 0 ? notional / lev : notional;
   const pnlPercent = margin ? (net / margin) * 100 : 0;
-  return { gross, fees, net, pnlPercent };
+
+  return { gross, fees: totalFees, net, pnlPercent };
 }
 
 function enrich(trades, settings) {
@@ -1102,8 +1138,132 @@ function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           <Field label="Entry Price"><input type="number" step="any" style={inputStyle} value={draft.entryPrice} onChange={set("entryPrice")} placeholder="0.00" /></Field>
           <Field label="Exit Price"><input type="number" step="any" style={inputStyle} value={draft.exitPrice} onChange={set("exitPrice")} placeholder="0.00" /></Field>
-          <Field label="Position Size"><input type="number" step="any" style={inputStyle} value={draft.size} onChange={set("size")} placeholder="0.00" /></Field>
+          <Field label="Position Size">
+            <input 
+              type="number" 
+              step="any" 
+              style={inputStyle} 
+              value={draft.size} 
+              onChange={(e) => {
+                const newSize = e.target.value;
+                const total = Number(newSize) || 0;
+                const updatedPartials = (draft.partials || []).map((p) => {
+                  const pct = p.percent || (draft.size > 0 && p.size > 0 ? ((Number(p.size) / Number(draft.size)) * 100).toFixed(1) : "");
+                  if (pct !== "") {
+                    const sz = total > 0 ? ((Number(pct) / 100) * total).toFixed(4) : "";
+                    return { ...p, size: sz, percent: pct };
+                  }
+                  return p;
+                });
+                setDraft({ ...draft, size: newSize, partials: updatedPartials });
+              }} 
+              placeholder="0.00" 
+            />
+          </Field>
           <Field label="Leverage (optional)"><input type="number" step="any" style={inputStyle} value={draft.leverage} onChange={set("leverage")} placeholder="1" /></Field>
+        </div>
+
+        <SectionTitle>Partial Exits (Optional)</SectionTitle>
+        <div className="mb-6">
+          <p style={{ fontSize: 12.5, color: C.textDim, marginBottom: 12 }}>
+            Record partial profit-taking (scaling out) at different price points. 
+            Remaining position size (if any) is assumed to be closed at the main Exit Price.
+          </p>
+          
+          <div className="flex flex-col gap-2 mb-3">
+            {(draft.partials || []).map((p, idx) => {
+              const currentPercent = p.percent || (Number(draft.size) > 0 && Number(p.size) > 0 ? ((Number(p.size) / Number(draft.size)) * 100).toFixed(1) : "");
+              return (
+                <div key={idx} className="flex gap-2 items-end">
+                  <div style={{ flex: 1.5 }}>
+                    <label style={{ fontSize: 10.5, color: C.textFaint, display: "block", marginBottom: 3 }}>Exit Size</label>
+                    <input 
+                      type="number" 
+                      step="any" 
+                      placeholder="Size" 
+                      style={inputStyle} 
+                      value={p.size} 
+                      onChange={(e) => {
+                        const sz = e.target.value;
+                        const total = Number(draft.size) || 0;
+                        const pct = total > 0 && sz !== "" ? ((Number(sz) / total) * 100).toFixed(1) : "";
+                        const updated = [...draft.partials];
+                        updated[idx] = { ...updated[idx], size: sz, percent: pct };
+                        setDraft({ ...draft, partials: updated });
+                      }} 
+                    />
+                  </div>
+                  <div style={{ width: 85 }}>
+                    <label style={{ fontSize: 10.5, color: C.textFaint, display: "block", marginBottom: 3 }}>Exit %</label>
+                    <input 
+                      type="number" 
+                      step="any" 
+                      placeholder="%" 
+                      style={inputStyle} 
+                      value={currentPercent} 
+                      onChange={(e) => {
+                        const pct = e.target.value;
+                        const total = Number(draft.size) || 0;
+                        const sz = total > 0 && pct !== "" ? ((Number(pct) / 100) * total).toFixed(4) : "";
+                        const updated = [...draft.partials];
+                        updated[idx] = { ...updated[idx], percent: pct, size: sz };
+                        setDraft({ ...draft, partials: updated });
+                      }} 
+                    />
+                  </div>
+                  <div style={{ flex: 1.5 }}>
+                    <label style={{ fontSize: 10.5, color: C.textFaint, display: "block", marginBottom: 3 }}>Exit Price</label>
+                    <input 
+                      type="number" 
+                      step="any" 
+                      placeholder="Price" 
+                      style={inputStyle} 
+                      value={p.price} 
+                      onChange={(e) => {
+                        const updated = [...draft.partials];
+                        updated[idx] = { ...updated[idx], price: e.target.value };
+                        setDraft({ ...draft, partials: updated });
+                      }} 
+                    />
+                  </div>
+                  <button 
+                    onClick={() => {
+                      const updated = (draft.partials || []).filter((_, i) => i !== idx);
+                      setDraft({ ...draft, partials: updated });
+                    }}
+                    className="p-2.5 rounded-lg flex items-center justify-center"
+                    style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.red, cursor: "pointer" }}
+                    title="Remove Partial Exit"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          
+          <div className="flex gap-3 items-center flex-wrap">
+            <button 
+              onClick={() => {
+                const currentPartials = draft.partials || [];
+                setDraft({ ...draft, partials: [...currentPartials, { size: "", price: "", percent: "" }] });
+              }}
+              className="flex items-center gap-1.5 rounded-lg font-medium"
+              style={{ padding: "8px 14px", border: `1px solid ${C.border}`, color: C.textDim, fontSize: 12.5, background: C.surface2, cursor: "pointer" }}
+            >
+              + Add Partial Exit
+            </button>
+            
+            {Number(draft.size) > 0 && (() => {
+              const totalExited = (draft.partials || []).reduce((acc, p) => acc + (Number(p.size) || 0), 0);
+              const remaining = Math.max(0, Number(draft.size) - totalExited);
+              return (
+                <span style={{ fontSize: 12, color: C.textFaint, fontFamily: FONT.mono }}>
+                  Remaining size closed at Exit Price: {remaining.toFixed(4)} / {Number(draft.size)}
+                </span>
+              );
+            })()}
+          </div>
         </div>
 
         {/* Auto calc panel */}
@@ -1229,7 +1389,12 @@ function HistoryPage({ trades, settings, onEdit, onDelete, lastDeleted, onUndo }
                   </td>
                   <td style={{ padding: "10px 14px", fontSize: 12.5, color: C.textDim }}>{strategyName(t)}</td>
                   <td style={{ padding: "10px 14px", fontSize: 12.5, color: C.textDim, fontFamily: FONT.mono }}>{t.timeframe}</td>
-                  <td style={{ padding: "10px 14px", fontSize: 13, fontFamily: FONT.mono, fontWeight: 700, color: t.pnl >= 0 ? C.green : C.red }}>{fmt$(t.pnl)}</td>
+                  <td style={{ padding: "10px 14px", fontSize: 13, fontFamily: FONT.mono, fontWeight: 700, color: t.pnl >= 0 ? C.green : C.red }}>
+                    {fmt$(t.pnl)}
+                    {t.partials && t.partials.length > 0 && (
+                      <span style={{ fontSize: 9, marginLeft: 6, padding: "1px 4px", borderRadius: 4, background: C.surface2, border: `1px solid ${C.border}`, color: C.textDim, fontWeight: 600 }}>Scaled</span>
+                    )}
+                  </td>
                   <td style={{ padding: "10px 14px" }}>
                     <div className="flex">{[1,2,3,4,5].map((n) => <Star key={n} size={11} fill={n <= t.rating ? C.amber : "none"} color={n <= t.rating ? C.amber : C.textFaint} />)}</div>
                   </td>
