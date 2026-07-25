@@ -413,6 +413,8 @@ export default function TradingJournal() {
   const [loaded, setLoaded] = useState(false);
   const [draft, setDraft] = useState(() => emptyDraft(DEFAULT_SETTINGS));
   const [timeFilter, setTimeFilter] = useState("All Time");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
   const [toast, setToast] = useState(null);
   const [lastDeleted, setLastDeleted] = useState(null);
   const fileAnchor = useRef(null);
@@ -630,9 +632,15 @@ export default function TradingJournal() {
       if (timeFilter === "Last 30 Days") return t.date >= start(30);
       if (timeFilter === "This Month") return t.date.slice(0, 7) === today.slice(0, 7);
       if (timeFilter === "YTD") return t.date.slice(0, 4) === today.slice(0, 4);
+      if (timeFilter === "Custom") {
+        if (customStart && customEnd) return t.date >= customStart && t.date <= customEnd;
+        if (customStart) return t.date >= customStart;
+        if (customEnd) return t.date <= customEnd;
+        return true;
+      }
       return true;
     });
-  }, [trades, timeFilter]);
+  }, [trades, timeFilter, customStart, customEnd]);
 
   const stats = useMemo(() => computeStats(filteredByTime, settings), [filteredByTime, settings]);
   const insights = useMemo(() => generateInsights(stats), [stats]);
@@ -835,7 +843,17 @@ export default function TradingJournal() {
         {/* MAIN */}
         <div className="flex-1 min-w-0 h-full overflow-y-auto" style={{ padding: "24px 28px" }}>
           {page === "dashboard" && (
-            <DashboardPage stats={stats} insights={insights} timeFilter={timeFilter} setTimeFilter={setTimeFilter} settings={settings} />
+            <DashboardPage 
+              stats={stats} 
+              insights={insights} 
+              timeFilter={timeFilter} 
+              setTimeFilter={setTimeFilter} 
+              settings={settings} 
+              customStart={customStart}
+              setCustomStart={setCustomStart}
+              customEnd={customEnd}
+              setCustomEnd={setCustomEnd}
+            />
           )}
           {page === "entry" && (
             <EntryPage draft={draft} setDraft={setDraft} onSave={saveTrade} onDuplicate={duplicateLast} onReset={() => setDraft(emptyDraft(settings))} settings={settings} />
@@ -857,19 +875,10 @@ export default function TradingJournal() {
 }
 
 /* ============================== DASHBOARD ============================== */
-const TIME_FILTERS = ["Today","Last 7 Days","Last 30 Days","This Month","YTD","All Time"];
+const TIME_FILTERS = ["Today","Last 7 Days","Last 30 Days","This Month","YTD","All Time","Custom"];
 
-function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings }) {
+function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, customStart, setCustomStart, customEnd, setCustomEnd }) {
   const C = React.useContext(ColorContext);
-  if (stats.total === 0) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center" style={{ minHeight: 480 }}>
-        <BarChart3 size={32} style={{ color: C.textFaint }} />
-        <div style={{ fontFamily: FONT.display, fontSize: 18, color: C.text, marginTop: 16 }}>No trades yet</div>
-        <div style={{ fontFamily: FONT.body, fontSize: 13, color: C.textDim, marginTop: 4 }}>Log your first trade to see performance analytics here.</div>
-      </div>
-    );
-  }
 
   const pieData = [
     { name: "Wins", value: stats.wins.length, color: C.green },
@@ -880,14 +889,35 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings })
     { name: "Short", winRate: stats.shortWinRate },
   ];
 
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h2 style={{ fontFamily: FONT.display, fontSize: 22, fontWeight: 700 }}>Analytics</h2>
-          <p style={{ fontFamily: FONT.body, fontSize: 13, color: C.textDim, marginTop: 2 }}>Performance across {stats.total} trades</p>
-        </div>
-        <div className="flex gap-1.5 flex-wrap justify-end">
+  const header = (
+    <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-5">
+      <div>
+        <h2 style={{ fontFamily: FONT.display, fontSize: 22, fontWeight: 700 }}>Analytics</h2>
+        <p style={{ fontFamily: FONT.body, fontSize: 13, color: C.textDim, marginTop: 2 }}>
+          {stats.total > 0 ? `Performance across ${stats.total} trades` : "No trades found in this range"}
+        </p>
+      </div>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 justify-end flex-wrap">
+        {timeFilter === "Custom" && (
+          <div className="flex items-center gap-2">
+            <input 
+              type="date" 
+              style={getInputStyle(C)} 
+              value={customStart || ""} 
+              onChange={(e) => setCustomStart(e.target.value)} 
+              className="py-1.5 px-2 text-xs" 
+            />
+            <span style={{ color: C.textFaint, fontSize: 12 }}>to</span>
+            <input 
+              type="date" 
+              style={getInputStyle(C)} 
+              value={customEnd || ""} 
+              onChange={(e) => setCustomEnd(e.target.value)} 
+              className="py-1.5 px-2 text-xs" 
+            />
+          </div>
+        )}
+        <div className="flex gap-1 flex-wrap justify-end">
           {TIME_FILTERS.map((f) => (
             <button key={f} onClick={() => setTimeFilter(f)}
               style={{
@@ -899,6 +929,29 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings })
           ))}
         </div>
       </div>
+    </div>
+  );
+
+  if (stats.total === 0) {
+    return (
+      <div>
+        {header}
+        <div className="flex flex-col items-center justify-center rounded-2xl" style={{ minHeight: 380, border: `1px dashed ${C.border}`, background: C.surface }}>
+          <BarChart3 size={32} style={{ color: C.textFaint }} className="mb-4" />
+          <div style={{ fontFamily: FONT.display, fontSize: 17, color: C.text, fontWeight: 600 }}>No trades found</div>
+          <div style={{ fontFamily: FONT.body, fontSize: 13, color: C.textDim, marginTop: 4 }}>
+            {timeFilter === "Custom" 
+              ? "Try adjusting your custom date range or log some trades." 
+              : `You haven't logged any trades for ${timeFilter === "Today" ? "today" : timeFilter.toLowerCase()}.`}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {header}
 
       {/* KPI GRID */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
