@@ -127,11 +127,14 @@ function calcDurationMin(t) {
 }
 
 function calcSession(entryTime) {
-  const h = Number(entryTime.split(":")[0]);
-  if (h >= 0 && h < 7) return "Asian";
-  if (h >= 7 && h < 12) return "London";
-  if (h >= 12 && h < 16) return "London/NY Overlap";
-  if (h >= 16 && h < 21) return "New York";
+  const [hours, minutes] = entryTime.split(":").map(Number);
+  const totalMinutes = hours * 60 + minutes;
+
+  if (totalMinutes >= 1110 && totalMinutes < 1350) return "London/NY Overlap";
+  if (totalMinutes >= 1110 || totalMinutes < 210) return "New York";
+  if (totalMinutes >= 810 && totalMinutes < 1350) return "London"; // Priority moved up
+  if (totalMinutes >= 210 && totalMinutes < 750) return "Sydney";
+  if (totalMinutes >= 330 && totalMinutes < 870) return "Asian";
   return "After Hours";
 }
 
