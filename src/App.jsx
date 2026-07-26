@@ -4,7 +4,7 @@ import {
   TrendingUp, TrendingDown, Target, Award, Flame, Snowflake, Star, Search,
   Download, X, Copy, RotateCcw, Save, Activity, Percent, Clock, BarChart3,
   Sparkles, Trash2, ChevronDown, Wallet, Gauge, Trophy, ShieldAlert, Filter,
-  ArrowUpRight, ArrowDownRight, Zap, LogOut, Menu, Moon, Sun
+  ArrowUpRight, ArrowDownRight, Zap, LogOut, Menu, Moon, Sun,SquareArrowOutUpRight,Bitcoin
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -28,7 +28,7 @@ const C_DARK = {
   borderLite: "#323238",
   text: "#F2F1ED",
   textDim: "#9A9AA2",
-  textFaint: "#5C5C64",
+  textFaint: "#b1b1b9",
   amber: "#F0B90B",
   amberDim: "rgba(240,185,11,0.10)",
   amberBorder: "rgba(240,185,11,0.35)",
@@ -77,6 +77,21 @@ const STRATEGIES = ["Breakout","Pullback","Scalping","Swing","ICT-FVG","Liquidit
 const TIMEFRAMES = ["1m","3m","5m","15m","30m","1H","4H","Daily"];
 const MISTAKE_OPTIONS = ["Entered Early","Exited Early","Moved Stop Loss","Ignored Trend","Over Leveraged","FOMO","Overtrading","No Mistake"];
 const WEEKDAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+const EXCHANGES = ["Bybit", "Binance", "CoinDCX", "CoinSwitch", "Mudrex", "Coinbase"];
+const EXCHANGE_LINKS = {
+  "Bybit": "https://www.bybit.com",
+  "Binance": "https://www.binance.com",
+  "CoinDCX": "https://coindcx.com",
+  "CoinSwitch": "https://coinswitch.co",
+  "Mudrex": "https://mudrex.com",
+  "Coinbase": "https://www.coinbase.com"
+};
+
+function getExchangeLink(name) {
+  if (!name) return "https://www.binance.com";
+  return EXCHANGE_LINKS[name] || `https://www.${name.toLowerCase()}.com`;
+}
 
 const DEFAULT_SETTINGS = {
   defaultExchange: "Binance",
@@ -434,7 +449,7 @@ export default function TradingJournal() {
 
   const C = theme === "light" ? C_LIGHT : C_DARK;
 
-  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2200); };
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2525); };
 
   // Hook into auth state changed
   useEffect(() => {
@@ -714,7 +729,7 @@ export default function TradingJournal() {
           <div style={{ width: 24, height: 24, borderRadius: 6, background: C.amberDim, border: `1px solid ${C.amberBorder}` }} className="flex items-center justify-center">
             <Activity size={13} style={{ color: C.amber }} />
           </div>
-          <span style={{ fontFamily: FONT.display, fontWeight: 700, fontSize: 14 }}>Ledger</span>
+          <span style={{ fontFamily: FONT.display, fontWeight: 700, fontSize: 14 }}>Trade Journal</span>
         </div>
         <div className="flex items-center gap-2">
           <button 
@@ -760,7 +775,7 @@ export default function TradingJournal() {
             <div style={{ width: 28, height: 28, borderRadius: 8, background: C.amberDim, border: `1px solid ${C.amberBorder}` }} className="flex items-center justify-center">
               <Activity size={15} style={{ color: C.amber }} />
             </div>
-            <span style={{ fontFamily: FONT.display, fontWeight: 700, fontSize: 15 }}>Ledger</span>
+            <span style={{ fontFamily: FONT.display, fontWeight: 700, fontSize: 15 }}>Trade Journal</span>
           </div>
           <div className="flex items-center gap-1">
             <button 
@@ -786,24 +801,60 @@ export default function TradingJournal() {
               <button
                 key={n.id}
                 onClick={() => { setPage(n.id); setSidebarOpen(false); }}
-                  className="flex items-center gap-2.5 rounded-lg transition-colors"
-                  style={{
-                    padding: "9px 12px",
-                    background: active ? C.amberDim : "transparent",
-                    color: active ? C.amber : C.textDim,
-                    border: active ? `1px solid ${C.amberBorder}` : "1px solid transparent",
-                    fontFamily: FONT.body, fontSize: 13.5, fontWeight: 500, cursor: "pointer", textAlign: "left",
-                  }}
-                >
-                  <n.icon size={15} />
-                  {n.label}
-                </button>
-              );
-            })}
+                className="flex items-center gap-2.5 rounded-lg transition-colors"
+                style={{
+                  padding: "9px 12px",
+                  background: active ? C.amberDim : "transparent",
+                  color: active ? C.amber : C.textDim,
+                  border: active ? `1px solid ${C.amberBorder}` : "1px solid transparent",
+                  fontFamily: FONT.body, fontSize: 13.5, fontWeight: 500, cursor: "pointer", textAlign: "left",
+                }}
+              >
+                <n.icon size={15} />
+                {n.label}
+              </button>
+            );
+          })}
+          <a
+            href="https://www.tradingview.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden md:flex items-center gap-2.5 rounded-lg transition-colors hover:text-blue-500"
+            style={{
+              padding: "9px 12px",
+              background: "transparent",
+              color: C.textDim,
+              border: "1px solid transparent",
+              fontFamily: FONT.body, fontSize: 13.5, fontWeight: 500, cursor: "pointer",
+              textDecoration: "none",
+            }}
+          >
+            <TrendingUp size={15} />
+            <span>TradingView</span>
+            <SquareArrowOutUpRight size={13} style={{ marginLeft: "auto", opacity: 0.6 }} />
+          </a>
+           <a
+            href={getExchangeLink(settings.defaultExchange)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden md:flex items-center gap-2.5 rounded-lg transition-colors hover:text-blue-500"
+            style={{
+              padding: "9px 12px",
+              background: "transparent",
+              color: C.textDim,
+              border: "1px solid transparent",
+              fontFamily: FONT.body, fontSize: 13.5, fontWeight: 500, cursor: "pointer",
+              textDecoration: "none",
+            }}
+          >
+            <Bitcoin size={15} />
+            <span>{settings.defaultExchange || "Exchange"}</span>
+            <SquareArrowOutUpRight size={13} style={{ marginLeft: "auto", opacity: 0.6 }} />
+          </a>
           </div>
 
           <div className="mt-auto pt-4" style={{ borderTop: `1px solid ${C.border}` }}>
-            <div style={{ fontFamily: FONT.mono, fontSize: 11, color: C.textFaint, padding: "4px 12px" }}>EQUITY</div>
+            <div style={{ fontFamily: FONT.mono, fontSize: 13, color: C.textFaint, padding: "4px 12px" }}>EQUITY</div>
             <div style={{ fontFamily: FONT.mono, fontSize: 18, fontWeight: 700, color: allTimeStats.currentEquity >= settings.startingBalance ? C.green : C.red, padding: "0 12px" }}>
               {fmt$(allTimeStats.currentEquity)}
             </div>
@@ -956,8 +1007,8 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
 
       {/* KPI GRID */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-        <KpiCard label="Net Profit" value={fmt$(stats.netProfit)} icon={Wallet} tone={stats.netProfit >= 0 ? "up" : "down"} sub={`${stats.total} trades`} />
-        <KpiCard label="Win Rate" value={`${stats.winRate.toFixed(1)}%`} icon={Target} sub={`${stats.wins.length}W / ${stats.losses.length}L`} />
+        <KpiCard label="Net Profit" value={fmt$(stats.netProfit)} icon={Wallet} tone={stats.netProfit >= 0 ? "up" : "down"} sub={`Total trades : ${stats.total} `} />
+        <KpiCard label="Win Rate" value={`${stats.winRate.toFixed(1)}%`} icon={Target} sub={`${stats.wins.length} Win / ${stats.losses.length} Lose`} />
         <KpiCard label="Profit Factor" value={isFinite(stats.profitFactor) ? stats.profitFactor.toFixed(2) : "∞"} icon={Gauge} />
         <KpiCard label="Max Drawdown" value={fmt$(-stats.maxDD)} icon={TrendingDown} tone="down" />
         <KpiCard label="Avg Win" value={fmt$(stats.avgWin)} icon={ArrowUpRight} tone="up" />
@@ -1510,12 +1561,16 @@ function SettingsPage({ settings, onSave }) {
   });
 
   return (
-    <div style={{ maxWidth: 620 }}>
+    <div className="min-w-3xl overflow-hidden">
       <h2 style={{ fontFamily: FONT.display, fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Settings</h2>
       <p style={{ fontFamily: FONT.body, fontSize: 13, color: C.textDim, marginBottom: 20 }}>Defaults used to auto-populate trade entry and calculations.</p>
       <Card style={{ padding: 22 }}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Default Exchange"><input style={inputStyle} value={local.defaultExchange} onChange={set("defaultExchange")} /></Field>
+          <Field label="Default Exchange">
+            <select style={inputStyle} value={local.defaultExchange} onChange={set("defaultExchange")}>
+              {EXCHANGES.map((ex) => <option key={ex} value={ex}>{ex}</option>)}
+            </select>
+          </Field>
           <Field label="Default Market"><input style={inputStyle} value={local.defaultMarket} onChange={set("defaultMarket")} /></Field>
           <Field label="Default Leverage"><input type="number" style={inputStyle} value={local.defaultLeverage} onChange={set("defaultLeverage")} /></Field>
           <Field label="Account Currency"><input style={inputStyle} value={local.accountCurrency} onChange={set("accountCurrency")} /></Field>
