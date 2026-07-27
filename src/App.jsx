@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  BarChart, Bar, PieChart, Pie, Cell, LineChart, Line
+  BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, ScatterChart, Scatter
 } from "recharts";
 
 import { isFirebaseConfigured, auth, db } from "./firebase";
@@ -317,6 +317,17 @@ function computeStats(rawTrades, settings) {
   const dailyMap = groupSum(trades, (t) => t.date).sort((a, b) => a.key.localeCompare(b.key));
   const monthlyMap = groupSum(trades, (t) => t.date.slice(0, 7)).sort((a, b) => a.key.localeCompare(b.key));
 
+  // R:R & Sharpe
+  const avgRR = avgLoss > 0 ? avgWin / avgLoss : 0;
+  const pnlList = trades.map((t) => t.pnl);
+  let sharpe = 0;
+  if (total > 0) {
+    const mean = netProfit / total;
+    const variance = pnlList.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / total;
+    const stdDev = Math.sqrt(variance);
+    sharpe = stdDev > 0 ? mean / stdDev : 0;
+  }
+
   // scores (0-100, heuristic)
   const disciplineScore = total ? Math.max(0, 100 - trades.filter((t) => t.mistakes.length > 0 && !t.mistakes.includes("No Mistake")).length / total * 100) : 0;
   const riskScore = Math.max(0, 100 - Math.min(100, (avgLoss && avgWin) ? Math.max(0, (avgLoss / (avgWin || 1) - 1) * 60) : 0));
@@ -328,7 +339,7 @@ function computeStats(rawTrades, settings) {
     recoveryFactor, curStreak, curType, maxWinStreak, maxLossStreak, byAsset, byStrategy, byWeekday,
     byHour, byTimeframe, bySession, longWinRate, shortWinRate, mostTraded, bestAsset, worstAsset,
     bestStrategy, worstStrategy, bestDay, worstDay, dailyMap, monthlyMap, disciplineScore, riskScore,
-    performanceScore, currentEquity: equity,
+    performanceScore, currentEquity: equity, avgRR, sharpe,
   };
 }
 
@@ -941,6 +952,15 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
     { name: "Short", winRate: stats.shortWinRate },
   ];
 
+  const scatterData = stats.trades.map((t, idx) => ({
+    x: Number((t.pnlPercent / 100).toFixed(2)),
+    y: Number(t.pnl.toFixed(2)),
+    asset: t.asset,
+    pnl: t.pnl,
+    date: t.date,
+    id: idx + 1
+  }));
+
   const header = (
     <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-5">
       <div>
@@ -1018,7 +1038,8 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
         <KpiCard label="Win Streak" value={stats.curType ? stats.curStreak : 0} icon={Snowflake} tone="up" />
         <KpiCard label="Loss Streak" value={!stats.curType ? stats.curStreak : 0} icon={Flame} tone="down" />
         <KpiCard label="Avg Duration" value={`${Math.round(stats.avgDuration)}m`} icon={Clock} />
-        <KpiCard label="Best Asset" value={stats.bestAsset ? stats.bestAsset.key : "—"} icon={Award} sub={stats.bestAsset ? fmt$(stats.bestAsset.net) : ""} />
+        <KpiCard label="Avg R:R Ratio" value={stats.avgRR ? stats.avgRR.toFixed(2) : "—"} icon={Target} sub="Risk efficiency" />
+        {/* <KpiCard label="Sharpe Ratio" value={stats.sharpe ? stats.sharpe.toFixed(2) : "—"} icon={Activity} sub="Risk-adjusted stability" /> */}
       </div>
 
       {/* CHARTS ROW 1 */}
@@ -1061,31 +1082,64 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
       {/* CHARTS ROW 2 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
         <Card style={{ padding: 18 }}>
-          <SectionTitle icon={BarChart3}>Profit by Asset</SectionTitle>
+          <SectionTitle icon={Clock}>Profit by Session</SectionTitle>
           <ResponsiveContainer width="100%" height={190}>
-            <BarChart data={stats.byAsset.slice(0, 6)}>
+            <BarChart data={stats.bySession}>
               <CartesianGrid stroke={C.border} vertical={false} />
-              <XAxis dataKey="key" tick={{ fill: C.textFaint, fontSize: 10, fontFamily: FONT.mono }} axisLine={{ stroke: C.border }} tickLine={false} />
+              <XAxis dataKey="key" tick={{ fill: C.textFaint, fontSize: 10, fontFamily: FONT.body }} axisLine={{ stroke: C.border }} tickLine={false} />
               <YAxis tick={{ fill: C.textFaint, fontSize: 10, fontFamily: FONT.mono }} axisLine={false} tickLine={false} width={45} />
               <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
               <Bar dataKey="net" radius={[4, 4, 0, 0]}>
-                {stats.byAsset.slice(0, 6).map((d, i) => <Cell key={i} fill={d.net >= 0 ? C.green : C.red} />)}
+                {stats.bySession.map((d, i) => <Cell key={i} fill={d.net >= 0 ? C.green : C.red} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         </Card>
         <Card style={{ padding: 18 }}>
-          <SectionTitle icon={Sparkles}>Profit by Strategy</SectionTitle>
+          <SectionTitle icon={TrendingUp}>Risk vs Reward (R:R)</SectionTitle>
           <ResponsiveContainer width="100%" height={190}>
-            <BarChart data={stats.byStrategy.slice(0, 6)}>
-              <CartesianGrid stroke={C.border} vertical={false} />
-              <XAxis dataKey="key" tick={{ fill: C.textFaint, fontSize: 10, fontFamily: FONT.mono }} axisLine={{ stroke: C.border }} tickLine={false} />
-              <YAxis tick={{ fill: C.textFaint, fontSize: 10, fontFamily: FONT.mono }} axisLine={false} tickLine={false} width={45} />
-              <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
-              <Bar dataKey="net" radius={[4, 4, 0, 0]}>
-                {stats.byStrategy.slice(0, 6).map((d, i) => <Cell key={i} fill={d.net >= 0 ? C.green : C.red} />)}
-              </Bar>
-            </BarChart>
+            <ScatterChart margin={{ top: 10, right: 10, bottom: 5, left: -10 }}>
+              <CartesianGrid stroke={C.border} strokeDasharray="3 3" vertical={false} />
+              <XAxis 
+                type="number" 
+                dataKey="x" 
+                name="R:R" 
+                tick={{ fill: C.textFaint, fontSize: 9, fontFamily: FONT.mono }} 
+                axisLine={{ stroke: C.border }} 
+                tickLine={false} 
+              />
+              <YAxis 
+                type="number" 
+                dataKey="y" 
+                name="PnL" 
+                tick={{ fill: C.textFaint, fontSize: 9, fontFamily: FONT.mono }} 
+                axisLine={false} 
+                tickLine={false} 
+                width={40} 
+              />
+              <Tooltip 
+                cursor={{ strokeDasharray: "3 3" }} 
+                content={({ active, payload }) => {
+                  if (active && payload && payload.length) {
+                    const data = payload[0].payload;
+                    return (
+                      <div style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "8px 12px", borderRadius: 8, fontSize: 11, fontFamily: FONT.body }}>
+                        <div style={{ fontWeight: 600, color: C.text, marginBottom: 2 }}>Trade #{data.id} ({data.date})</div>
+                        <div style={{ color: C.textDim }}>Asset: {data.asset}</div>
+                        <div style={{ color: data.pnl >= 0 ? C.green : C.red, fontWeight: 500 }}>PnL: ${data.pnl.toFixed(2)}</div>
+                        <div style={{ color: C.amber, fontWeight: 500 }}>R-Multiple: {data.x.toFixed(2)}R</div>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+              <Scatter name="Trades" data={scatterData}>
+                {scatterData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.y >= 0 ? C.green : C.red} />
+                ))}
+              </Scatter>
+            </ScatterChart>
           </ResponsiveContainer>
         </Card>
         <Card style={{ padding: 18 }}>
@@ -1114,7 +1168,7 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
               <XAxis type="number" domain={[0, 100]} tick={{ fill: C.textFaint, fontSize: 10, fontFamily: FONT.mono }} axisLine={false} tickLine={false} />
               <YAxis type="category" dataKey="name" tick={{ fill: C.textDim, fontSize: 12, fontFamily: FONT.body }} axisLine={false} tickLine={false} width={50} />
               <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
-              <Bar dataKey="winRate" radius={[0, 4, 4, 0]} fill={C.amber} barSize={22} />
+              <Bar dataKey="winRate" radius={[0, 4, 4, 0]} fill={C.amber} barSize={20} />
             </BarChart>
           </ResponsiveContainer>
         </Card>
