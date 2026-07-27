@@ -1641,7 +1641,7 @@ function SettingsPage({ settings, onSave }) {
               {EXCHANGES.map((ex) => <option key={ex} value={ex}>{ex}</option>)}
             </select>
           </Field>
-          <Field label="Default Market"><input style={inputStyle} value={local.defaultMarket} onChange={set("defaultMarket")} /></Field>
+          <Field label="Default Market"><input  style={inputStyle} value={local.defaultMarket} onChange={set("defaultMarket") } /></Field>
           <Field label="Default Leverage"><input type="number" style={inputStyle} value={local.defaultLeverage} onChange={set("defaultLeverage")} /></Field>
           <Field label="Account Currency"><input style={inputStyle} value={local.accountCurrency} onChange={set("accountCurrency")} /></Field>
           <Field label="Default Fee %"><input type="number" step="0.01" style={inputStyle} value={local.feePercent} onChange={set("feePercent")} /></Field>
