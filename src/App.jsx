@@ -952,14 +952,20 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
     { name: "Short", winRate: stats.shortWinRate },
   ];
 
-  const scatterData = stats.trades.map((t, idx) => ({
-    x: Number((t.pnlPercent / 100).toFixed(2)),
-    y: Number(t.pnl.toFixed(2)),
-    asset: t.asset,
-    pnl: t.pnl,
-    date: t.date,
-    id: idx + 1
-  }));
+  const scatterData = stats.trades.map((t, idx) => {
+    const entry = Number(t.entryPrice) || 0;
+    const size = Number(t.size) || 0;
+    const positionSize = entry * size;
+    return {
+      x: Number(positionSize.toFixed(2)),
+      y: Number(t.pnl.toFixed(2)),
+      asset: t.asset,
+      pnl: t.pnl,
+      positionSize,
+      date: t.date,
+      id: idx + 1
+    };
+  });
 
   const header = (
     <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-5">
@@ -1043,8 +1049,8 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
       </div>
 
       {/* CHARTS ROW 1 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
-        <Card className="col-span-1 lg:col-span-2" style={{ padding: 18 }}>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+        <Card className="col-span-1 md:col-span-2" style={{ padding: 18 }}>
           <SectionTitle icon={TrendingUp}>Equity Curve</SectionTitle>
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={stats.curve}>
@@ -1080,7 +1086,7 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
       </div>
 
       {/* CHARTS ROW 2 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+      <div className="grid grid-cols-2 md:grid-cols-2 gap-3 mb-3">
         <Card style={{ padding: 18 }}>
           <SectionTitle icon={Clock}>Profit by Session</SectionTitle>
           <ResponsiveContainer width="100%" height={190}>
@@ -1096,17 +1102,18 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
           </ResponsiveContainer>
         </Card>
         <Card style={{ padding: 18 }}>
-          <SectionTitle icon={TrendingUp}>Risk vs Reward (R:R)</SectionTitle>
+          <SectionTitle icon={TrendingUp}>Size vs Net PnL</SectionTitle>
           <ResponsiveContainer width="100%" height={190}>
             <ScatterChart margin={{ top: 10, right: 10, bottom: 5, left: -10 }}>
               <CartesianGrid stroke={C.border} strokeDasharray="3 3" vertical={false} />
               <XAxis 
                 type="number" 
                 dataKey="x" 
-                name="R:R" 
+                name="Size" 
                 tick={{ fill: C.textFaint, fontSize: 9, fontFamily: FONT.mono }} 
                 axisLine={{ stroke: C.border }} 
                 tickLine={false} 
+                tickFormatter={(v) => v >= 1000 ? `$${(v/1000).toFixed(0)}k` : `$${v}`}
               />
               <YAxis 
                 type="number" 
@@ -1126,8 +1133,8 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
                       <div style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "8px 12px", borderRadius: 8, fontSize: 11, fontFamily: FONT.body }}>
                         <div style={{ fontWeight: 600, color: C.text, marginBottom: 2 }}>Trade #{data.id} ({data.date})</div>
                         <div style={{ color: C.textDim }}>Asset: {data.asset}</div>
+                        <div style={{ color: C.textDim, marginBottom: 2 }}>Size: ${data.positionSize.toLocaleString()}</div>
                         <div style={{ color: data.pnl >= 0 ? C.green : C.red, fontWeight: 500 }}>PnL: ${data.pnl.toFixed(2)}</div>
-                        <div style={{ color: C.amber, fontWeight: 500 }}>R-Multiple: {data.x.toFixed(2)}R</div>
                       </div>
                     );
                   }
@@ -1156,10 +1163,6 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
             </BarChart>
           </ResponsiveContainer>
         </Card>
-      </div>
-
-      {/* SCORES + LONG/SHORT */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
         <Card style={{ padding: 18 }}>
           <SectionTitle icon={Gauge}>Long vs Short Win Rate</SectionTitle>
           <ResponsiveContainer width="100%" height={150}>
