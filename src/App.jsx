@@ -4,7 +4,7 @@ import {
   TrendingUp, TrendingDown, Target, Award, Flame, Snowflake, Star, Search,
   Download, X, Copy, RotateCcw, Save, Activity, Percent, Clock, BarChart3,
   Sparkles, Trash2, ChevronDown, Wallet, Gauge, Trophy, ShieldAlert, Filter,
-  ArrowUpRight, ArrowDownRight, Zap, LogOut, Menu, Moon, Sun,SquareArrowOutUpRight,Bitcoin
+  ArrowUpRight, ArrowDownRight, Zap, LogOut, Menu, Moon, Sun,SquareArrowOutUpRight,Bitcoin,RotateCw
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1292,7 +1292,31 @@ function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
           <Field label="Date"><input type="date" style={inputStyle} value={draft.date} onChange={set("date")} /></Field>
           <Field label="Entry Time"><input type="time" style={inputStyle} value={draft.entryTime} onChange={set("entryTime")} /></Field>
-          <Field label="Exit Time"><input type="time" style={inputStyle} value={draft.exitTime} onChange={set("exitTime")} /></Field>
+          <Field label="Exit Time">
+            <div className="flex gap-1.5">
+              <input type="time" style={inputStyle} value={draft.exitTime} onChange={set("exitTime")} />
+              <button 
+                type="button"
+                onClick={() => {
+                  const now = new Date();
+                  const hh = String(now.getHours()).padStart(2, "0");
+                  const mm = String(now.getMinutes()).padStart(2, "0");
+                  setDraft({ ...draft, exitTime: `${hh}:${mm}` });
+                }}
+                className="flex items-center justify-center rounded-lg transition-colors hover:text-amber-500"
+                style={{
+                  padding: "9px 11px",
+                  background: C.surface2,
+                  border: `1px solid ${C.border}`,
+                  color: C.textDim,
+                  cursor: "pointer"
+                }}
+                title="Fetch current time"
+              >
+                <RotateCw size={14} />
+              </button>
+            </div>
+          </Field>
           <Field label="Direction">
             <div className="flex gap-2">
               {["Long", "Short"].map((d) => (
