@@ -25,6 +25,11 @@ import WinLossPie from "./WinLossPie";
 import ProfitBySession from "./ProfitBySession";
 import ProfitByWeekday from "./ProfitByWeekday";
 import LongShortWinRate from "./LongShortWinRate";
+import PnLDistribution from "./PnLDistribution";
+import DrawdownCurve from "./DrawdownCurve";
+import HoldingTimeVsPnL from "./HoldingTimeVsPnL";
+import EquityCurveByTrade from "./EquityCurveByTrade";
+import AccountGrowth from "./AccountGrowth";
 /* ============================== TOKENS ============================== */
 const C_DARK = {
   bg: "#0A0A0C",
@@ -426,13 +431,31 @@ export function ChartTooltip({ active, payload, label }) {
   const C = React.useContext(ColorContext);
   if (!active || !payload || !payload.length) return null;
   return (
-    <div style={{ background: C.surface2, border: `1px solid ${C.borderLite}`, borderRadius: 10, padding: "8px 12px" }}>
+    <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "8px 12px" }}>
       <div style={{ fontFamily: FONT.mono, fontSize: 11, color: C.textDim, marginBottom: 2 }}>{label}</div>
-      {payload.map((p, i) => (
-        <div key={i} style={{ fontFamily: FONT.mono, fontSize: 13, color: p.color || C.text, fontWeight: 600 }}>
-          {typeof p.value === "number" ? fmt$(p.value) : p.value}
-        </div>
-      ))}
+      {payload.map((p, i) => {
+        let displayVal = p.value;
+        const key = p.dataKey || "";
+        const name = p.name || "";
+
+        if (key === "equity" || key === "net" || key === "pnl") {
+          displayVal = typeof p.value === "number" ? fmt$(p.value) : p.value;
+        } else if (key === "winRate" || name.toLowerCase().includes("win rate") || name.toLowerCase().includes("winrate")) {
+          displayVal = typeof p.value === "number" ? `${p.value.toFixed(1)}%` : p.value;
+        } else if (key === "count" || key === "value") {
+          displayVal = typeof p.value === "number" ? `${p.value} trades` : p.value;
+        } else if (typeof p.value === "number") {
+          displayVal = p.value;
+        }
+
+        const labelName = name === "count" ? "Trades" : (name === "value" ? "Trades" : name);
+
+        return (
+          <div key={i} style={{ fontFamily: FONT.mono, fontSize: 13, color: p.color || C.text, fontWeight: 600 }}>
+            {labelName ? `${labelName}: ` : ""}{displayVal}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -949,6 +972,7 @@ const TIME_FILTERS = ["Today","Last 7 Days","Last 30 Days","This Month","YTD","A
 
 function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, customStart, setCustomStart, customEnd, setCustomEnd }) {
   const C = React.useContext(ColorContext);
+  const [activeTab, setActiveTab] = React.useState("dashboard");
 
   const pieData = [
     { name: "Wins", value: stats.wins.length, color: C.green },
@@ -969,6 +993,33 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
         </p>
       </div>
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 justify-end flex-wrap">
+        {/* Tab Switcher */}
+        <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: C.surface2, border: `1px solid ${C.border}` }}>
+          <button
+            onClick={() => setActiveTab("dashboard")}
+            style={{
+              padding: "5px 12px", borderRadius: 8, fontSize: 12, fontFamily: FONT.body, cursor: "pointer",
+              background: activeTab === "dashboard" ? C.surface : "transparent",
+              color: activeTab === "dashboard" ? C.amber : C.textDim,
+              border: `1px solid ${activeTab === "dashboard" ? C.border : "transparent"}`,
+              fontWeight: activeTab === "dashboard" ? 600 : 500,
+            }}
+          >
+            Dashboard Stats
+          </button>
+          <button
+            onClick={() => setActiveTab("detailed")}
+            style={{
+              padding: "5px 12px", borderRadius: 8, fontSize: 12, fontFamily: FONT.body, cursor: "pointer",
+              background: activeTab === "detailed" ? C.surface : "transparent",
+              color: activeTab === "detailed" ? C.amber : C.textDim,
+              border: `1px solid ${activeTab === "detailed" ? C.border : "transparent"}`,
+              fontWeight: activeTab === "detailed" ? 600 : 500,
+            }}
+          >
+            Detailed Stats
+          </button>
+        </div>
         {timeFilter === "Custom" && (
           <div className="flex items-center gap-2">
             <input 
@@ -1041,34 +1092,50 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
         {/* <KpiCard label="Sharpe Ratio" value={stats.sharpe ? stats.sharpe.toFixed(2) : "—"} icon={Activity} sub="Risk-adjusted stability" /> */}
       </div>
 
-      {/* CHARTS ROW 1 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-        <EquityCurve stats={stats} />
-        <WinLossPie stats={stats} />
-      </div>
-
-      {/* CHARTS ROW 2 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-        <ProfitBySession stats={stats} />
-        <RiskRewardScatter trades={stats.trades} settings={settings} />
-        <ProfitByWeekday stats={stats} />
-        <LongShortWinRate stats={stats} />
-        <Card style={{ padding: 18 }}>
-          <SectionTitle icon={Trophy}>Performance Score</SectionTitle>
-          <ScoreBar label="Performance" value={stats.performanceScore} />
-          <ScoreBar label="Discipline" value={stats.disciplineScore} />
-          <ScoreBar label="Risk Management" value={stats.riskScore} />
-        </Card>
-        <Card style={{ padding: 18 }}>
-          <SectionTitle icon={Wallet}>Snapshot</SectionTitle>
-          <div className="flex flex-col gap-2.5">
-            <Row label="Expectancy / trade" value={fmt$(stats.expectancy)} />
-            <Row label="Recovery Factor" value={isFinite(stats.recoveryFactor) ? stats.recoveryFactor.toFixed(2) : "∞"} />
-            <Row label="Avg Position Size" value={stats.avgPositionSize.toFixed(2)} />
-            <Row label="Monthly Goal" value={`${fmt$(settings.monthlyGoal)}`} />
+      {activeTab === "dashboard" ? (
+        <>
+          {/* CHARTS ROW 1 */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+            <EquityCurve stats={stats} />
+            <WinLossPie stats={stats} />
           </div>
-        </Card>
-      </div>
+
+          {/* CHARTS ROW 2 */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+            <ProfitBySession stats={stats} />
+            <ProfitByWeekday stats={stats} />
+            <LongShortWinRate stats={stats} />
+            <Card style={{ padding: 18 }}>
+              <SectionTitle icon={Trophy}>Performance Score</SectionTitle>
+              <ScoreBar label="Performance" value={stats.performanceScore} />
+              <ScoreBar label="Discipline" value={stats.disciplineScore} />
+              <ScoreBar label="Risk Management" value={stats.riskScore} />
+            </Card>
+            <Card style={{ padding: 18 }}>
+              <SectionTitle icon={Wallet}>Snapshot</SectionTitle>
+              <div className="flex flex-col gap-2.5">
+                <Row label="Expectancy / trade" value={fmt$(stats.expectancy)} />
+                <Row label="Recovery Factor" value={isFinite(stats.recoveryFactor) ? stats.recoveryFactor.toFixed(2) : "∞"} />
+                <Row label="Avg Position Size" value={stats.avgPositionSize.toFixed(2)} />
+                <Row label="Monthly Goal" value={`${fmt$(settings.monthlyGoal)}`} />
+              </div>
+            </Card>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* DETAILED STATS ROW */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+            <EquityCurveByTrade trades={stats.trades} settings={settings} />
+            <DrawdownCurve trades={stats.trades} settings={settings} />
+            <PnLDistribution trades={stats.trades} />
+            <RiskRewardScatter trades={stats.trades} type="size" />
+            {/* <RiskRewardScatter trades={stats.trades} type="risk" /> */}
+            <AccountGrowth trades={stats.trades} settings={settings} />
+            <HoldingTimeVsPnL trades={stats.trades} />
+          </div>
+        </>
+      )}
 
       {/* INSIGHTS */}
       {insights.length > 0 && (
