@@ -152,16 +152,56 @@ function calcDurationMin(t) {
   return Math.max(end - start, 0);
 }
 
-function calcSession(entryTime) {
-  const [hours, minutes] = entryTime.split(":").map(Number);
-  const totalMinutes = hours * 60 + minutes;
+function calcSession(entryTime, entryDate = new Date()) {
+    // Parse entry date parts safely
+    const baseDate = new Date(entryDate);
+    const y = baseDate.getFullYear();
+    const m = String(baseDate.getMonth() + 1).padStart(2, "0");
+    const d = String(baseDate.getDate()).padStart(2, "0");
 
-  if (totalMinutes >= 1110 && totalMinutes < 1350) return "London/NY Overlap";
-  if (totalMinutes >= 1110 || totalMinutes < 210) return "New York";
-  if (totalMinutes >= 810 && totalMinutes < 1350) return "London"; // Priority moved up
-  if (totalMinutes >= 210 && totalMinutes < 750) return "Sydney";
-  if (totalMinutes >= 330 && totalMinutes < 870) return "Asian";
-  return "After Hours";
+    // Construct a true UTC Date using the IST offset (+05:30)
+    // Example: "2026-07-27T13:30:00+05:30"
+    const utc = new Date(`${y}-${m}-${d}T${entryTime}:00+05:30`);
+
+    // Helper to extract the local hour decimal for any timezone safely
+    function getTzHour(date, timeZone) {
+        const formatter = new Intl.DateTimeFormat("en-US", {
+            timeZone,
+            hour: "numeric",
+            minute: "numeric",
+            hour12: false
+        });
+        const parts = formatter.formatToParts(date);
+        const hour = parts.find(p => p.type === "hour").value;
+        const minute = parts.find(p => p.type === "minute").value;
+        return Number(hour) + Number(minute) / 60;
+    }
+
+    // Helper for interval checks
+    function isBetween(hour, start, end) {
+        if (start < end)
+            return hour >= start && hour < end;
+        return hour >= start || hour < end;
+    }
+
+    // Safely retrieve DST-adjusted local hours for each exchange
+    const londonHour = getTzHour(utc, "Europe/London");
+    const nyHour     = getTzHour(utc, "America/New_York");
+    const tokyoHour  = getTzHour(utc, "Asia/Tokyo");
+    const sydHour    = getTzHour(utc, "Australia/Sydney");
+
+    const londonOpen = isBetween(londonHour, 8, 17);
+    const nyOpen     = isBetween(nyHour, 8, 17);
+    const tokyoOpen  = isBetween(tokyoHour, 9, 18);
+    const sydOpen    = isBetween(sydHour, 8, 17);
+
+    if (londonOpen && nyOpen) return "London/NY Overlap";
+    if (nyOpen) return "New York";
+    if (londonOpen) return "London";
+    if (tokyoOpen) return "Tokyo";
+    if (sydOpen) return "Sydney";
+
+    return "After Hours";
 }
 
 function calcPnL(t, settings) {
@@ -277,7 +317,7 @@ function computeStats(rawTrades, settings) {
   const profitFactor = grossLoss !== 0 ? grossProfit / Math.abs(grossLoss) : grossProfit > 0 ? Infinity : 0;
   const expectancy = (winRate / 100) * avgWin - (1 - winRate / 100) * avgLoss;
   const avgDuration = total ? trades.reduce((s, t) => s + t.durationMin, 0) / total : 0;
-  const avgPositionSize = total ? trades.reduce((s, t) => s + (Number(t.size) || 0), 0) / total : 0;
+  const avgPositionSize = total ? trades.reduce((s, t) => s + ((Number(t.size) || 0) * (Number(t.entryPrice) || 0)), 0) / total : 0;
 
   // equity curve + drawdown
   let equity = settings.startingBalance || 0;
@@ -290,7 +330,7 @@ function computeStats(rawTrades, settings) {
     maxDD = Math.max(maxDD, peak - equity);
     curve.push({ label: `#${i + 1}`, equity: Math.round(equity), date: t.date });
   });
-  const recoveryFactor = maxDD > 0 ? netProfit / maxDD : netProfit > 0 ? Infinity : 0;
+  const recoveryFactor = (maxDD > 0 && netProfit > 0) ? netProfit / maxDD : netProfit > 0 ? Infinity : 0;
 
   // streaks
   let curStreak = 0, curType = null, maxWinStreak = 0, maxLossStreak = 0, runW = 0, runL = 0;
@@ -343,14 +383,26 @@ function computeStats(rawTrades, settings) {
   const disciplineScore = total ? Math.max(0, 100 - trades.filter((t) => t.mistakes.length > 0 && !t.mistakes.includes("No Mistake")).length / total * 100) : 0;
   const riskScore = Math.max(0, 100 - Math.min(100, (avgLoss && avgWin) ? Math.max(0, (avgLoss / (avgWin || 1) - 1) * 60) : 0));
   const performanceScore = Math.max(0, Math.min(100, winRate * 0.5 + Math.min(profitFactor, 3) * 16.6));
-
+  const mistakeCounts = {};
+  trades.forEach((t) => {
+    if (t.mistakes && Array.isArray(t.mistakes)) {
+      t.mistakes.forEach((m) => {
+        if (m && m !== "No Mistake" && m !== "None") {
+          mistakeCounts[m] = (mistakeCounts[m] || 0) + 1;
+        }
+      });
+    }
+  });
+  const sortedMistakes = Object.entries(mistakeCounts)
+    .map(([key, count]) => ({ key, count }))
+    .sort((a, b) => b.count - a.count);
   return {
     trades, total, wins, losses, netProfit, grossProfit, grossLoss, winRate, avgWin, avgLoss,
     largestWin, largestLoss, profitFactor, expectancy, avgDuration, avgPositionSize, curve, maxDD,
     recoveryFactor, curStreak, curType, maxWinStreak, maxLossStreak, byAsset, byStrategy, byWeekday,
     byHour, byTimeframe, bySession, longWinRate, shortWinRate, mostTraded, bestAsset, worstAsset,
     bestStrategy, worstStrategy, bestDay, worstDay, dailyMap, monthlyMap, disciplineScore, riskScore,
-    performanceScore, currentEquity: equity, avgRR, sharpe,
+    performanceScore, currentEquity: equity, avgRR, sharpe, sortedMistakes
   };
 }
 
@@ -1116,8 +1168,23 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
               <div className="flex flex-col gap-2.5">
                 <Row label="Expectancy / trade" value={fmt$(stats.expectancy)} />
                 <Row label="Recovery Factor" value={isFinite(stats.recoveryFactor) ? stats.recoveryFactor.toFixed(2) : "∞"} />
-                <Row label="Avg Position Size" value={stats.avgPositionSize.toFixed(2)} />
+                <Row label="Avg Position Size" value={fmt$(stats.avgPositionSize)} />
                 <Row label="Monthly Goal" value={`${fmt$(settings.monthlyGoal)}`} />
+              </div>
+            </Card>
+            <Card style={{ padding: 18 }}>
+              <SectionTitle icon={ShieldAlert}>Mistakes Tracker</SectionTitle>
+              <div className="flex flex-col gap-2.5">
+                {stats.sortedMistakes && stats.sortedMistakes.length > 0 ? (
+                  stats.sortedMistakes.slice(0, 4).map((m, i) => (
+                    <Row key={i} label={m.key} value={`${m.count} ${m.count === 1 ? "trade" : "trades"}`} />
+                  ))
+                ) : (
+                  <div style={{ color: C.green, fontSize: 13, display: "flex", alignItems: "center", gap: 8, height: "100%", marginTop: 24, justifyContent: "center" }} className="flex justify-center items-center">
+                    <Award size={16} />
+                    <span>Excellent discipline! No mistakes logged.</span>
+                  </div>
+                )}
               </div>
             </Card>
           </div>
@@ -1125,13 +1192,13 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
       ) : (
         <>
           {/* DETAILED STATS ROW */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+          <div className="grid grid-cols-2 md:grid-cols-2 gap-3 mb-3">
             <EquityCurveByTrade trades={stats.trades} settings={settings} />
-            <DrawdownCurve trades={stats.trades} settings={settings} />
-            <PnLDistribution trades={stats.trades} />
             <RiskRewardScatter trades={stats.trades} type="size" />
+            <DrawdownCurve trades={stats.trades} settings={settings} />
             {/* <RiskRewardScatter trades={stats.trades} type="risk" /> */}
             <AccountGrowth trades={stats.trades} settings={settings} />
+            <PnLDistribution trades={stats.trades} />
             <HoldingTimeVsPnL trades={stats.trades} />
           </div>
         </>
