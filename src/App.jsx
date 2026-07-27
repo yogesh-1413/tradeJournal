@@ -19,6 +19,12 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import BackToTop from "./backToTop";
+import RiskRewardScatter from "./RiskRewardScatter";
+import EquityCurve from "./EquityCurve";
+import WinLossPie from "./WinLossPie";
+import ProfitBySession from "./ProfitBySession";
+import ProfitByWeekday from "./ProfitByWeekday";
+import LongShortWinRate from "./LongShortWinRate";
 /* ============================== TOKENS ============================== */
 const C_DARK = {
   bg: "#0A0A0C",
@@ -62,11 +68,11 @@ const C_LIGHT = {
   blue: "#2712df",
 };
 
-const ColorContext = React.createContext(C_DARK);
+export const ColorContext = React.createContext(C_DARK);
 
 const getInputStyle = (C) => ({ width: "100%", background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 9, padding: "9px 11px", color: C.text, fontSize: 13.5, fontFamily: FONT.body });
 
-const FONT = {
+export const FONT = {
   display: "'Space Grotesk', sans-serif",
   body: "'Inter', sans-serif",
   mono: "'JetBrains Mono', monospace",
@@ -376,7 +382,7 @@ function generateInsights(s) {
 }
 
 /* ============================== SMALL UI ============================== */
-const Card = ({ children, style, className = "" }) => {
+export const Card = ({ children, style, className = "" }) => {
   const C = React.useContext(ColorContext);
   return (
     <div
@@ -406,7 +412,7 @@ function KpiCard({ label, value, sub, icon: Icon, tone }) {
   );
 }
 
-function SectionTitle({ children, icon: Icon }) {
+export function SectionTitle({ children, icon: Icon }) {
   const C = React.useContext(ColorContext);
   return (
     <div className="flex items-center gap-2 mb-4">
@@ -416,7 +422,7 @@ function SectionTitle({ children, icon: Icon }) {
   );
 }
 
-function ChartTooltip({ active, payload, label }) {
+export function ChartTooltip({ active, payload, label }) {
   const C = React.useContext(ColorContext);
   if (!active || !payload || !payload.length) return null;
   return (
@@ -953,20 +959,6 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
     { name: "Short", winRate: stats.shortWinRate },
   ];
 
-  const scatterData = stats.trades.map((t, idx) => {
-    const entry = Number(t.entryPrice) || 0;
-    const size = Number(t.size) || 0;
-    const positionSize = entry * size;
-    return {
-      x: Number(positionSize.toFixed(2)),
-      y: Number(t.pnl.toFixed(2)),
-      asset: t.asset,
-      pnl: t.pnl,
-      positionSize,
-      date: t.date,
-      id: idx + 1
-    };
-  });
 
   const header = (
     <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-5">
@@ -1051,131 +1043,16 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
 
       {/* CHARTS ROW 1 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-        <Card className="col-span-1 md:col-span-2" style={{ padding: 18 }}>
-          <SectionTitle icon={TrendingUp}>Equity Curve</SectionTitle>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={stats.curve}>
-              <defs>
-                <linearGradient id="eq" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={C.amber} stopOpacity={0.35} />
-                  <stop offset="100%" stopColor={C.amber} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke={C.border} vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: C.textFaint, fontSize: 10, fontFamily: FONT.mono }} axisLine={{ stroke: C.border }} tickLine={false} interval="preserveStartEnd" />
-              <YAxis tick={{ fill: C.textFaint, fontSize: 10, fontFamily: FONT.mono }} axisLine={false} tickLine={false} width={55} tickFormatter={(v) => `$${v}`} />
-              <Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" dataKey="equity" stroke={C.amber} strokeWidth={2} fill="url(#eq)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </Card>
-        <Card className="col-span-1" style={{ padding: 18 }}>
-          <SectionTitle icon={Target}>Win / Loss</SectionTitle>
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie data={pieData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={80} paddingAngle={3}>
-                {pieData.map((d, i) => <Cell key={i} fill={d.color} stroke="none" />)}
-              </Pie>
-              <Tooltip content={<ChartTooltip />} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="flex justify-center gap-4 -mt-2">
-            <span style={{ fontSize: 12, color: C.green, fontFamily: FONT.mono }}>● Wins {stats.wins.length}</span>
-            <span style={{ fontSize: 12, color: C.red, fontFamily: FONT.mono }}>● Losses {stats.losses.length}</span>
-          </div>
-        </Card>
+        <EquityCurve stats={stats} />
+        <WinLossPie stats={stats} />
       </div>
 
       {/* CHARTS ROW 2 */}
-      <div className="grid grid-cols-2 md:grid-cols-2 gap-3 mb-3">
-        <Card style={{ padding: 18 }}>
-          <SectionTitle icon={Clock}>Profit by Session</SectionTitle>
-          <ResponsiveContainer width="100%" height={190}>
-            <BarChart data={stats.bySession}>
-              <CartesianGrid stroke={C.border} vertical={false} />
-              <XAxis dataKey="key" tick={{ fill: C.textFaint, fontSize: 10, fontFamily: FONT.body }} axisLine={{ stroke: C.border }} tickLine={false} />
-              <YAxis tick={{ fill: C.textFaint, fontSize: 10, fontFamily: FONT.mono }} axisLine={false} tickLine={false} width={45} />
-              <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
-              <Bar dataKey="net" radius={[4, 4, 0, 0]}>
-                {stats.bySession.map((d, i) => <Cell key={i} fill={d.net >= 0 ? C.green : C.red} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-        <Card style={{ padding: 18 }}>
-          <SectionTitle icon={TrendingUp}>Size vs Net PnL</SectionTitle>
-          <ResponsiveContainer width="100%" height={190}>
-            <ScatterChart margin={{ top: 10, right: 10, bottom: 5, left: -10 }}>
-              <CartesianGrid stroke={C.border} strokeDasharray="3 3" vertical={false} />
-              <XAxis 
-                type="number" 
-                dataKey="x" 
-                name="Size" 
-                tick={{ fill: C.textFaint, fontSize: 9, fontFamily: FONT.mono }} 
-                axisLine={{ stroke: C.border }} 
-                tickLine={false} 
-                tickFormatter={(v) => v >= 1000 ? `$${(v/1000).toFixed(0)}k` : `$${v}`}
-              />
-              <YAxis 
-                type="number" 
-                dataKey="y" 
-                name="PnL" 
-                tick={{ fill: C.textFaint, fontSize: 9, fontFamily: FONT.mono }} 
-                axisLine={false} 
-                tickLine={false} 
-                width={40} 
-              />
-              <Tooltip 
-                cursor={{ strokeDasharray: "3 3" }} 
-                content={({ active, payload }) => {
-                  if (active && payload && payload.length) {
-                    const data = payload[0].payload;
-                    return (
-                      <div style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "8px 12px", borderRadius: 8, fontSize: 11, fontFamily: FONT.body }}>
-                        <div style={{ fontWeight: 600, color: C.text, marginBottom: 2 }}>Trade #{data.id} ({data.date})</div>
-                        <div style={{ color: C.textDim }}>Asset: {data.asset}</div>
-                        <div style={{ color: C.textDim, marginBottom: 2 }}>Size: ${data.positionSize.toLocaleString()}</div>
-                        <div style={{ color: data.pnl >= 0 ? C.green : C.red, fontWeight: 500 }}>PnL: ${data.pnl.toFixed(2)}</div>
-                      </div>
-                    );
-                  }
-                  return null;
-                }}
-              />
-              <Scatter name="Trades" data={scatterData}>
-                {scatterData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.y >= 0 ? C.green : C.red} />
-                ))}
-              </Scatter>
-            </ScatterChart>
-          </ResponsiveContainer>
-        </Card>
-        <Card style={{ padding: 18 }}>
-          <SectionTitle icon={Clock}>Profit by Weekday</SectionTitle>
-          <ResponsiveContainer width="100%" height={190}>
-            <BarChart data={stats.byWeekday}>
-              <CartesianGrid stroke={C.border} vertical={false} />
-              <XAxis dataKey="key" tick={{ fill: C.textFaint, fontSize: 10, fontFamily: FONT.mono }} axisLine={{ stroke: C.border }} tickLine={false} />
-              <YAxis tick={{ fill: C.textFaint, fontSize: 10, fontFamily: FONT.mono }} axisLine={false} tickLine={false} width={45} />
-              <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
-              <Bar dataKey="net" radius={[4, 4, 0, 0]}>
-                {stats.byWeekday.map((d, i) => <Cell key={i} fill={d.net >= 0 ? C.green : C.red} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-        <Card style={{ padding: 18 }}>
-          <SectionTitle icon={Gauge}>Long vs Short Win Rate</SectionTitle>
-          <ResponsiveContainer width="100%" height={150}>
-            <BarChart data={dirData} layout="vertical">
-              <CartesianGrid stroke={C.border} horizontal={false} />
-              <XAxis type="number" domain={[0, 100]} tick={{ fill: C.textFaint, fontSize: 10, fontFamily: FONT.mono }} axisLine={false} tickLine={false} />
-              <YAxis type="category" dataKey="name" tick={{ fill: C.textDim, fontSize: 12, fontFamily: FONT.body }} axisLine={false} tickLine={false} width={50} />
-              <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
-              <Bar dataKey="winRate" radius={[0, 4, 4, 0]} fill={C.amber} barSize={20} />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+        <ProfitBySession stats={stats} />
+        <RiskRewardScatter trades={stats.trades} settings={settings} />
+        <ProfitByWeekday stats={stats} />
+        <LongShortWinRate stats={stats} />
         <Card style={{ padding: 18 }}>
           <SectionTitle icon={Trophy}>Performance Score</SectionTitle>
           <ScoreBar label="Performance" value={stats.performanceScore} />
