@@ -18,7 +18,7 @@ import {
   collection, doc, setDoc, deleteDoc, onSnapshot, query, writeBatch 
 } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-
+import BackToTop from "./backToTop";
 /* ============================== TOKENS ============================== */
 const C_DARK = {
   bg: "#0A0A0C",
@@ -904,7 +904,7 @@ export default function TradingJournal() {
         </div>
 
         {/* MAIN */}
-        <div className="flex-1 min-w-0 h-full overflow-y-auto" style={{ padding: "24px 28px" }}>
+        <div id="main-scroll-container" className="flex-1 min-w-0 h-full overflow-y-auto" style={{ padding: "24px 28px" }}>
           {page === "dashboard" && (
             <DashboardPage 
               stats={stats} 
@@ -925,6 +925,7 @@ export default function TradingJournal() {
             <HistoryPage trades={trades} settings={settings} onEdit={editTrade} onDelete={deleteTrade} lastDeleted={lastDeleted} onUndo={undoDelete} />
           )}
           {page === "settings" && <SettingsPage settings={settings} onSave={persistSettings} />}
+          <BackToTop />
         </div>
 
       {toast && (
@@ -1208,6 +1209,7 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
           </div>
         </Card>
       )}
+      
     </div>
   );
 }
