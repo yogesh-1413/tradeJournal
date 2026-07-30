@@ -972,6 +972,24 @@ export default function TradingJournal() {
             <span>{settings.defaultExchange || "Exchange"}</span>
             <SquareArrowOutUpRight size={13} style={{ marginLeft: "auto", opacity: 0.6 }} />
           </a>
+           <a
+            href="https://www.hyrotrader.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden md:flex items-center gap-2.5 rounded-lg transition-colors hover:text-blue-500"
+            style={{
+              padding: "9px 12px",
+              background: "transparent",
+              color: C.textDim,
+              border: "1px solid transparent",
+              fontFamily: FONT.body, fontSize: 13.5, fontWeight: 500, cursor: "pointer",
+              textDecoration: "none",
+            }}
+          >
+            <TrendingUp size={15} />
+            <span>PropFirm</span>
+            <SquareArrowOutUpRight size={13} style={{ marginLeft: "auto", opacity: 0.6 }} />
+          </a>
           </div>
 
           <div className="mt-auto pt-4" style={{ borderTop: `1px solid ${C.border}` }}>
