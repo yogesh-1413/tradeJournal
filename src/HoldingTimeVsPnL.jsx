@@ -53,13 +53,13 @@ export default function HoldingTimeVsPnL({ trades }) {
       <SectionTitle icon={Clock}>Holding Time vs P&L</SectionTitle>
       <ResponsiveContainer width="100%" height={190}>
         <ScatterChart margin={{ top: 10, right: 10, bottom: 5, left: -10 }}>
-          <CartesianGrid stroke={C.border} strokeDasharray="3 3" vertical={false} />
+          <CartesianGrid stroke={C.borderLite} strokeDasharray="3 3" vertical={false} />
           <XAxis 
             type="number" 
             dataKey="x" 
             name="Duration" 
-            tick={{ fill: C.textFaint, fontSize: 9, fontFamily: FONT.mono }} 
-            axisLine={{ stroke: C.border }} 
+            tick={{ fill: C.text, fontSize: 9, fontFamily: FONT.mono }} 
+            axisLine={{ stroke: C.borderLite }} 
             tickLine={false} 
             tickFormatter={formatXAxis}
           />
@@ -67,7 +67,7 @@ export default function HoldingTimeVsPnL({ trades }) {
             type="number" 
             dataKey="y" 
             name="PnL" 
-            tick={{ fill: C.textFaint, fontSize: 9, fontFamily: FONT.mono }} 
+            tick={{ fill: C.text, fontSize: 9, fontFamily: FONT.mono }} 
             axisLine={false} 
             tickLine={false} 
             width={40} 

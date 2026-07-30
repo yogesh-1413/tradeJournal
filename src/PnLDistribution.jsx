@@ -40,9 +40,9 @@ export default function PnLDistribution({ trades }) {
       <SectionTitle icon={BarChart3}>P&L Distribution</SectionTitle>
       <ResponsiveContainer width="100%" height={190}>
         <BarChart data={data}>
-          <CartesianGrid stroke={C.border} vertical={false} />
-          <XAxis dataKey="label" tick={{ fill: C.textFaint, fontSize: 9, fontFamily: FONT.mono }} axisLine={{ stroke: C.border }} tickLine={false} />
-          <YAxis tick={{ fill: C.textFaint, fontSize: 10, fontFamily: FONT.mono }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
+          <CartesianGrid stroke={C.borderLite} vertical={false} />
+          <XAxis dataKey="label" tick={{ fill: C.text, fontSize: 9, fontFamily: FONT.mono }} axisLine={{ stroke: C.borderLite }} tickLine={false} />
+          <YAxis tick={{ fill: C.text, fontSize: 10, fontFamily: FONT.mono }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
           <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
           <Bar dataKey="count" radius={[4, 4, 0, 0]}>
             {data.map((d, i) => <Cell key={i} fill={d.isWin ? C.green : C.red} />)}

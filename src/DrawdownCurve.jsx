@@ -55,9 +55,9 @@ export default function DrawdownCurve({ trades, settings }) {
               <stop offset="100%" stopColor={C.red} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid stroke={C.border} vertical={false} />
-          <XAxis dataKey="label" tick={{ fill: C.textFaint, fontSize: 9, fontFamily: FONT.mono }} axisLine={{ stroke: C.border }} tickLine={false} />
-          <YAxis tick={{ fill: C.textFaint, fontSize: 10, fontFamily: FONT.mono }} axisLine={false} tickLine={false} width={45} tickFormatter={(v) => `${v}%`} />
+          <CartesianGrid stroke={C.borderLite} vertical={false} />
+          <XAxis dataKey="label" tick={{ fill: C.text, fontSize: 9, fontFamily: FONT.mono }} axisLine={{ stroke: C.borderLite }} tickLine={false} />
+          <YAxis tick={{ fill: C.text, fontSize: 10, fontFamily: FONT.mono }} axisLine={false} tickLine={false} width={45} tickFormatter={(v) => `${v}%`} />
           <Tooltip content={<CustomChartTooltip />} />
           <Area type="monotone" dataKey="drawdown" stroke={C.red} strokeWidth={2} fill="url(#dd)" />
         </AreaChart>

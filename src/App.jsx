@@ -40,16 +40,16 @@ const C_DARK = {
   text: "#F2F1ED",
   textDim: "#9A9AA2",
   textFaint: "#b1b1b9",
-  amber: "#F0B90B",
-  amberDim: "rgba(240,185,11,0.10)",
-  amberBorder: "rgba(240,185,11,0.35)",
-  green: "#3838f8", // Set profits and longs to Sky Blue
-  greenDim: "rgba(14, 10, 238, 0.1)",
-  greenBorder: "rgba(43, 29, 240, 0.35)",
+  amber: "#2563EB", // Rich Cobalt blue
+  amberDim: "rgba(37,99,235,0.10)",
+  amberBorder: "rgba(37,99,235,0.35)",
+  green: "#1D4ED8", // Bold dark blue
+  greenDim: "rgba(29,78,216,0.10)",
+  greenBorder: "rgba(29,78,216,0.35)",
   red: "#F5455C",
   redDim: "rgba(245,69,92,0.10)",
   redBorder: "rgba(245,69,92,0.35)",
-  blue: "#2338f0",
+  blue: "#1E40AF",
 };
 
 const C_LIGHT = {
@@ -61,16 +61,16 @@ const C_LIGHT = {
   text: "#0A0A0C",
   textDim: "#44444A",
   textFaint: "#77777D",
-  amber: "#D49E00",
-  amberDim: "rgba(212,158,0,0.10)",
-  amberBorder: "rgba(212,158,0,0.35)",
-  green: "#0284C7", // Set profits and longs to Blue
-  greenDim: "rgba(2, 5, 199, 0.08)",
-  greenBorder: "rgba(15, 2, 199, 0.25)",
+  amber: "#1D4ED8", // Deep blue
+  amberDim: "rgba(29,78,216,0.10)",
+  amberBorder: "rgba(29,78,216,0.35)",
+  green: "#1E3A8A", // Bold dark blue
+  greenDim: "rgba(30,58,138,0.10)",
+  greenBorder: "rgba(30,58,138,0.35)",
   red: "#D32F2F",
   redDim: "rgba(211,47,47,0.10)",
   redBorder: "rgba(211,47,47,0.25)",
-  blue: "#2712df",
+  blue: "#1E3A8A",
 };
 
 export const ColorContext = React.createContext(C_DARK);
@@ -473,14 +473,26 @@ const fmtPct = (n) => `${n >= 0 ? "" : ""}${n.toFixed(1)}%`;
 
 function KpiCard({ label, value, sub, icon: Icon, tone }) {
   const C = React.useContext(ColorContext);
-  const color = tone === "up" ? C.green : tone === "down" ? C.red : C.amber;
+  const valColor = tone === "down" ? C.red : C.text;
   return (
     <Card style={{ padding: "18px 20px" }}>
       <div className="flex items-center justify-between mb-3">
         <span style={{ color: C.textFaint, fontFamily: FONT.body, fontSize: 12, letterSpacing: 0.4, textTransform: "uppercase" }}>{label}</span>
-        <Icon size={15} style={{ color }} />
+        <div style={{ 
+          width: 28, 
+          height: 28, 
+          borderRadius: 8, 
+          background: "rgba(29, 78, 216, 0.12)", 
+          border: "1px solid rgba(29, 78, 216, 0.25)",
+          display: "flex", 
+          alignItems: "center", 
+          justifyContent: "center",
+          flexShrink: 0
+        }}>
+          <Icon size={14} style={{ color: "#3B82F6" }} />
+        </div>
       </div>
-      <div style={{ fontFamily: FONT.mono, fontSize: 22, fontWeight: 600, color: C.text }}>{value}</div>
+      <div style={{ fontFamily: FONT.mono, fontSize: 22, fontWeight: 600, color: valColor }}>{value}</div>
       {sub && <div style={{ fontFamily: FONT.body, fontSize: 12, color: C.textDim, marginTop: 4 }}>{sub}</div>}
     </Card>
   );
@@ -1584,7 +1596,7 @@ function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) 
         </Field>
 
         <div className="flex gap-3 mt-6">
-          <button onClick={onSave} className="flex items-center gap-2 rounded-lg" style={{ padding: "10px 20px", background: C.amber, color: "#1A1400", fontWeight: 700, fontSize: 13.5, border: "none", cursor: "pointer" }}>
+          <button onClick={onSave} className="flex items-center gap-2 rounded-lg" style={{ padding: "10px 20px", background: C.amber, color: "#FFFFFF", fontWeight: 700, fontSize: 13.5, border: "none", cursor: "pointer" }}>
             <Save size={15} /> {draft.id ? "Update Trade" : "Save Trade"}
           </button>
         </div>
@@ -1732,7 +1744,7 @@ function SettingsPage({ settings, onSave }) {
           <Field label="Daily Max Loss"><input type="number" style={inputStyle} value={local.dailyMaxLoss} onChange={set("dailyMaxLoss")} /></Field>
           <Field label="Preferred Risk %"><input type="number" step="0.1" style={inputStyle} value={local.riskPercent} onChange={set("riskPercent")} /></Field>
         </div>
-        <button onClick={save} className="flex items-center gap-2 rounded-lg mt-6" style={{ padding: "10px 20px", background: C.amber, color: "#1A1400", fontWeight: 700, fontSize: 13.5, border: "none", cursor: "pointer" }}>
+        <button onClick={save} className="flex items-center gap-2 rounded-lg mt-6" style={{ padding: "10px 20px", background: C.amber, color: "#FFFFFF", fontWeight: 700, fontSize: 13.5, border: "none", cursor: "pointer" }}>
           <Save size={15} /> Save Settings
         </button>
       </Card>

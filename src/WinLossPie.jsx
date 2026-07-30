@@ -6,9 +6,9 @@ import { ColorContext, FONT, Card, SectionTitle, ChartTooltip } from "./App";
 export default function WinLossPie({ stats }) {
   const C = React.useContext(ColorContext);
   const pieData = [
-    { name: "Wins", value: stats.wins.length, color: C.green },
-    { name: "Losses", value: stats.losses.length, color: C.red },
-    { name: "Breakeven", value: stats.breakevens.length, color: C.textFaint },
+    { name: "Wins", value: stats.wins.length, color: "#1D4ED8" },
+    { name: "Losses", value: stats.losses.length, color: "#F5455C" },
+    { name: "Breakeven", value: stats.breakevens.length, color: "#64748B" },
   ];
 
   return (
@@ -25,9 +25,9 @@ export default function WinLossPie({ stats }) {
         </ResponsiveContainer>
       </div>
       <div className="flex justify-center gap-3.5 -mt-2 flex-wrap">
-        <span style={{ fontSize: 11.5, color: C.green, fontFamily: FONT.mono }}>● Wins {stats.wins.length}</span>
-        <span style={{ fontSize: 11.5, color: C.red, fontFamily: FONT.mono }}>● Losses {stats.losses.length}</span>
-        <span style={{ fontSize: 11.5, color: C.textFaint, fontFamily: FONT.mono }}>● BE {stats.breakevens.length}</span>
+        <span style={{ fontSize: 11.5, color: "#1D4ED8", fontFamily: FONT.mono }}>● Wins {stats.wins.length}</span>
+        <span style={{ fontSize: 11.5, color: "#F5455C", fontFamily: FONT.mono }}>● Losses {stats.losses.length}</span>
+        <span style={{ fontSize: 11.5, color: "#64748B", fontFamily: FONT.mono }}>● BE {stats.breakevens.length}</span>
       </div>
     </Card>
   );
