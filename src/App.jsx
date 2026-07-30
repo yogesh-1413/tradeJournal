@@ -3,7 +3,7 @@ import {
   LayoutDashboard, PlusCircle, History as HistoryIcon, Settings as SettingsIcon,
   TrendingUp, TrendingDown, Target, Award, Flame, Snowflake, Star, Search,
   Download, X, Copy, RotateCcw, Save, Activity, Percent, Clock, BarChart3,
-  Sparkles, Trash2, ChevronDown, Wallet, Gauge, Trophy, ShieldAlert, Filter,
+  Sparkles, Trash2, ChevronDown, Wallet, Gauge, Trophy, ShieldAlert, Shield, Filter,
   ArrowUpRight, ArrowDownRight, Zap, LogOut, Menu, Moon, Sun,SquareArrowOutUpRight,Bitcoin,RotateCw
 } from "lucide-react";
 import {
@@ -138,6 +138,7 @@ const emptyDraft = (settings) => ({
   partials: [],
   entryFee: "",
   exitFee: "",
+  isBreakeven: false,
 });
 
 /* ============================== CALC ENGINE ============================== */
@@ -153,17 +154,16 @@ function calcDurationMin(t) {
 }
 
 function calcSession(entryTime, entryDate = new Date()) {
-    // Parse entry date parts safely
+    // Parse entry date
     const baseDate = new Date(entryDate);
     const y = baseDate.getFullYear();
     const m = String(baseDate.getMonth() + 1).padStart(2, "0");
     const d = String(baseDate.getDate()).padStart(2, "0");
 
-    // Construct a true UTC Date using the IST offset (+05:30)
-    // Example: "2026-07-27T13:30:00+05:30"
+    // Convert IST time to UTC
     const utc = new Date(`${y}-${m}-${d}T${entryTime}:00+05:30`);
 
-    // Helper to extract the local hour decimal for any timezone safely
+    // Get decimal hour in a timezone
     function getTzHour(date, timeZone) {
         const formatter = new Intl.DateTimeFormat("en-US", {
             timeZone,
@@ -171,35 +171,48 @@ function calcSession(entryTime, entryDate = new Date()) {
             minute: "numeric",
             hour12: false
         });
+
         const parts = formatter.formatToParts(date);
-        const hour = parts.find(p => p.type === "hour").value;
-        const minute = parts.find(p => p.type === "minute").value;
-        return Number(hour) + Number(minute) / 60;
+        const hour = Number(parts.find(p => p.type === "hour").value);
+        const minute = Number(parts.find(p => p.type === "minute").value);
+
+        return hour + minute / 60;
     }
 
-    // Helper for interval checks
+    // Check if current time is within a range
     function isBetween(hour, start, end) {
         if (start < end)
             return hour >= start && hour < end;
         return hour >= start || hour < end;
     }
 
-    // Safely retrieve DST-adjusted local hours for each exchange
+    // Local market times
     const londonHour = getTzHour(utc, "Europe/London");
-    const nyHour     = getTzHour(utc, "America/New_York");
-    const tokyoHour  = getTzHour(utc, "Asia/Tokyo");
-    const sydHour    = getTzHour(utc, "Australia/Sydney");
+    const nyHour = getTzHour(utc, "America/New_York");
+    const tokyoHour = getTzHour(utc, "Asia/Tokyo");
+    const sydneyHour = getTzHour(utc, "Australia/Sydney");
 
-    const londonOpen = isBetween(londonHour, 8, 17);
-    const nyOpen     = isBetween(nyHour, 8, 17);
-    const tokyoOpen  = isBetween(tokyoHour, 9, 18);
-    const sydOpen    = isBetween(sydHour, 8, 17);
+    // Official stock market sessions
+    const londonOpen = isBetween(londonHour, 8.0, 16.5);     // LSE: 08:00 - 16:30
+    const nyOpen = isBetween(nyHour, 9.5, 16.0);             // NYSE: 09:30 - 16:00
+    const tokyoOpen = isBetween(tokyoHour, 9.0, 15.0);       // TSE: 09:00 - 15:00
+    const sydneyOpen = isBetween(sydneyHour, 10.0, 16.0);    // ASX: 10:00 - 16:00
 
-    if (londonOpen && nyOpen) return "London/NY Overlap";
-    if (nyOpen) return "New York";
-    if (londonOpen) return "London";
-    if (tokyoOpen) return "Tokyo";
-    if (sydOpen) return "Sydney";
+    // London/NYSE overlap
+    if (londonOpen && nyOpen)
+        return "London/NYSE Overlap";
+
+    if (nyOpen)
+        return "NYSE";
+
+    if (londonOpen)
+        return "London";
+
+    if (tokyoOpen)
+        return "Tokyo";
+
+    if (sydneyOpen)
+        return "Sydney";
 
     return "After Hours";
 }
@@ -273,6 +286,8 @@ function enrich(trades, settings) {
   return trades
     .map((t) => {
       const { net, pnlPercent, gross, fees } = calcPnL(t, settings);
+      const isBreakeven = t.isBreakeven || (gross === 0 && Number(t.exitPrice) > 0) || (Number(t.exitPrice) > 0 && Math.abs(gross) <= (Number(t.entryPrice) * Number(t.size) * 0.0005));
+      const isWin = net > 0 && !isBreakeven;
       return {
         ...t,
         durationMin: calcDurationMin(t),
@@ -281,7 +296,8 @@ function enrich(trades, settings) {
         pnlPercent,
         gross,
         fees,
-        isWin: net > 0,
+        isWin,
+        isBreakeven,
         weekday: WEEKDAYS[new Date(t.date + "T00:00:00").getDay()],
         entryHour: Number(t.entryTime.split(":")[0]),
       };
@@ -305,7 +321,8 @@ function computeStats(rawTrades, settings) {
   const trades = enrich(rawTrades, settings);
   const total = trades.length;
   const wins = trades.filter((t) => t.isWin);
-  const losses = trades.filter((t) => !t.isWin);
+  const breakevens = trades.filter((t) => t.isBreakeven);
+  const losses = trades.filter((t) => !t.isWin && !t.isBreakeven);
   const netProfit = trades.reduce((s, t) => s + t.pnl, 0);
   const grossProfit = wins.reduce((s, t) => s + t.pnl, 0);
   const grossLoss = losses.reduce((s, t) => s + t.pnl, 0);
@@ -397,7 +414,7 @@ function computeStats(rawTrades, settings) {
     .map(([key, count]) => ({ key, count }))
     .sort((a, b) => b.count - a.count);
   return {
-    trades, total, wins, losses, netProfit, grossProfit, grossLoss, winRate, avgWin, avgLoss,
+    trades, total, wins, losses, breakevens, netProfit, grossProfit, grossLoss, winRate, avgWin, avgLoss,
     largestWin, largestLoss, profitFactor, expectancy, avgDuration, avgPositionSize, curve, maxDD,
     recoveryFactor, curStreak, curType, maxWinStreak, maxLossStreak, byAsset, byStrategy, byWeekday,
     byHour, byTimeframe, bySession, longWinRate, shortWinRate, mostTraded, bestAsset, worstAsset,
@@ -1130,7 +1147,7 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
       {/* KPI GRID */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
         <KpiCard label="Net Profit" value={fmt$(stats.netProfit)} icon={Wallet} tone={stats.netProfit >= 0 ? "up" : "down"} sub={`Total trades : ${stats.total} `} />
-        <KpiCard label="Win Rate" value={`${stats.winRate.toFixed(1)}%`} icon={Target} sub={`${stats.wins.length} Win / ${stats.losses.length} Lose`} />
+        <KpiCard label="Win Rate" value={`${stats.winRate.toFixed(1)}%`} icon={Target} sub={`${stats.wins.length} W / ${stats.losses.length} L / ${stats.breakevens.length} BE`} />
         <KpiCard label="Profit Factor" value={isFinite(stats.profitFactor) ? stats.profitFactor.toFixed(2) : "∞"} icon={Gauge} />
         <KpiCard label="Max Drawdown" value={fmt$(-stats.maxDD)} icon={TrendingDown} tone="down" />
         <KpiCard label="Avg Win" value={fmt$(stats.avgWin)} icon={ArrowUpRight} tone="up" />
@@ -1353,9 +1370,34 @@ function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) 
         </div>
 
         <SectionTitle>Trade Details</SectionTitle>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 mb-6">
           <Field label="Entry Price"><input type="number" step="any" style={inputStyle} value={draft.entryPrice} onChange={set("entryPrice")} placeholder="0.00" /></Field>
-          <Field label="Exit Price"><input type="number" step="any" style={inputStyle} value={draft.exitPrice} onChange={set("exitPrice")} placeholder="0.00" /></Field>
+          <Field label="Exit Price">
+            <div className="flex gap-1.5">
+              <input type="number" step="any" style={inputStyle} value={draft.exitPrice} onChange={set("exitPrice")} placeholder="0.00" />
+              <button 
+                type="button"
+                onClick={() => {
+                  setDraft({ 
+                    ...draft, 
+                    exitPrice: draft.entryPrice,
+                    isBreakeven: true
+                  });
+                }}
+                className="flex items-center justify-center rounded-lg transition-colors hover:text-amber-500"
+                style={{
+                  padding: "9px 11px",
+                  background: C.surface2,
+                  border: `1px solid ${C.border}`,
+                  color: C.textDim,
+                  cursor: "pointer"
+                }}
+                title="Set to entry price (Breakeven)"
+              >
+                <Shield size={14} />
+              </button>
+            </div>
+          </Field>
           <Field label="Position Size">
             <input 
               type="number" 
@@ -1381,6 +1423,22 @@ function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) 
           <Field label="Leverage (optional)"><input type="number" step="any" style={inputStyle} value={draft.leverage} onChange={set("leverage")} placeholder="1" /></Field>
           <Field label="Entry Fee (optional)"><input type="number" step="any" style={inputStyle} value={draft.entryFee || ""} onChange={set("entryFee")} placeholder="Auto" /></Field>
           <Field label="Exit Fee (optional)"><input type="number" step="any" style={inputStyle} value={draft.exitFee || ""} onChange={set("exitFee")} placeholder="Auto" /></Field>
+          <Field label="Breakeven?">
+            <button 
+              type="button"
+              onClick={() => setDraft({ ...draft, isBreakeven: !draft.isBreakeven })}
+              className="w-full rounded-lg transition-all font-semibold text-xs text-center"
+              style={{
+                padding: "9.5px 0",
+                background: draft.isBreakeven ? C.amberDim : C.surface2,
+                color: draft.isBreakeven ? C.amber : C.textDim,
+                border: `1px solid ${draft.isBreakeven ? C.amberBorder : C.border}`,
+                cursor: "pointer"
+              }}
+            >
+              {draft.isBreakeven ? "Marked Breakeven" : "No"}
+            </button>
+          </Field>
         </div>
 
         <SectionTitle>Partial Exits (Optional)</SectionTitle>
