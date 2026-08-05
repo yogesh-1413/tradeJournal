@@ -4,7 +4,9 @@ import {
   TrendingUp, TrendingDown, Target, Award, Flame, Snowflake, Star, Search,
   Download, X, Copy, RotateCcw, Save, Activity, Percent, Clock, BarChart3,
   Sparkles, Trash2, ChevronDown, Wallet, Gauge, Trophy, ShieldAlert, Shield, Filter,
-  ArrowUpRight, ArrowDownRight, Zap, LogOut, Menu, Moon, Sun,SquareArrowOutUpRight,Bitcoin,RotateCw
+  ArrowUpRight, ArrowDownRight, Zap, LogOut, Menu, Moon, Sun,SquareArrowOutUpRight,Bitcoin,RotateCw,
+  Coins,
+  DollarSign
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -40,7 +42,7 @@ const C_DARK = {
   text: "#F2F1ED",
   textDim: "#9A9AA2",
   textFaint: "#b1b1b9",
-  amber: "#2563EB", // Rich Cobalt blue
+  amber: "#1D4ED8", // Rich Cobalt blue
   amberDim: "rgba(37,99,235,0.10)",
   amberBorder: "rgba(37,99,235,0.35)",
   green: "#1D4ED8", // Bold dark blue
@@ -986,7 +988,7 @@ export default function TradingJournal() {
               textDecoration: "none",
             }}
           >
-            <TrendingUp size={15} />
+            <DollarSign size={15} />
             <span>PropFirm</span>
             <SquareArrowOutUpRight size={13} style={{ marginLeft: "auto", opacity: 0.6 }} />
           </a>
