@@ -1,53 +1,93 @@
 import React from "react";
-import { ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
+import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ReferenceLine } from "recharts";
 import { BarChart3 } from "lucide-react";
-import { ColorContext, FONT, Card, SectionTitle, ChartTooltip } from "./App";
+import { ColorContext, FONT, Card, SectionTitle } from "./App";
 
 export default function PnLDistribution({ trades }) {
   const C = React.useContext(ColorContext);
 
-  const getBuckets = () => {
+  const scatterData = React.useMemo(() => {
     if (!trades || trades.length === 0) return [];
     
-    // Standard buckets based on the typical $50 risk profile:
-    const buckets = [
-      { label: "<-$100", min: -Infinity, max: -100.01, count: 0, isWin: false },
-      { label: "-$100 to -$50", min: -100, max: -50.01, count: 0, isWin: false },
-      { label: "-$50 to $0", min: -50, max: -0.01, count: 0, isWin: false },
-      { label: "$0 to $50", min: 0, max: 50, count: 0, isWin: true },
-      { label: "$50 to $100", min: 50.01, max: 100, count: 0, isWin: true },
-      { label: "$100 to $200", min: 100.01, max: 200, count: 0, isWin: true },
-      { label: ">$200", min: 200.01, max: Infinity, count: 0, isWin: true },
-    ];
+    // Sort trades chronologically
+    const sortedTrades = [...trades].sort((a, b) => (a.date + a.entryTime).localeCompare(b.date + b.entryTime));
     
-    trades.forEach((t) => {
-      const pnl = Number(t.pnl) || 0;
-      for (let b of buckets) {
-        if (pnl >= b.min && pnl <= b.max) {
-          b.count += 1;
-          break;
-        }
-      }
-    });
+    return sortedTrades.map((t, idx) => ({
+      x: idx + 1,
+      y: Number(t.pnl) || 0,
+      asset: t.asset,
+      date: t.date,
+      pnl: t.pnl,
+      isWin: t.isWin,
+      isBreakeven: t.isBreakeven
+    }));
+  }, [trades]);
 
-    return buckets;
+  const CustomChartTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      const d = payload[0].payload;
+      let outcomeColor = d.isBreakeven ? "#64748B" : (d.isWin ? "#1D4ED8" : "#F5455C");
+      let outcomeLabel = d.isBreakeven ? "Breakeven" : (d.isWin ? "Win" : "Loss");
+
+      return (
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "8px 12px", borderRadius: 8, fontSize: 11, fontFamily: FONT.body }}>
+          <div style={{ fontWeight: 600, color: C.text, marginBottom: 2 }}>Trade #{d.x} ({d.date})</div>
+          <div style={{ color: C.textDim }}>Asset: {d.asset}</div>
+          <div style={{ color: outcomeColor, fontWeight: 600, marginTop: 4 }}>
+            {outcomeLabel}: ${d.pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+        </div>
+      );
+    }
+    return null;
   };
 
-  const data = getBuckets();
+  const fmtYAxis = (v) => {
+    const abs = Math.abs(v);
+    let sign = v < 0 ? "-" : "";
+    if (abs >= 1000) {
+      return `${sign}$${(abs / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+    }
+    return `${sign}$${Math.round(abs)}`;
+  };
 
   return (
     <Card style={{ padding: 18 }}>
-      <SectionTitle icon={BarChart3}>P&L Distribution</SectionTitle>
+      <SectionTitle icon={BarChart3}>P&L Distribution (by Trade #)</SectionTitle>
       <ResponsiveContainer width="100%" height={190}>
-        <BarChart data={data}>
-          <CartesianGrid stroke={C.borderLite} vertical={false} />
-          <XAxis dataKey="label" tick={{ fill: C.text, fontSize: 9, fontFamily: FONT.mono }} axisLine={{ stroke: C.borderLite }} tickLine={false} />
-          <YAxis tick={{ fill: C.text, fontSize: 10, fontFamily: FONT.mono }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
-          <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
-          <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-            {data.map((d, i) => <Cell key={i} fill={d.isWin ? C.green : C.red} />)}
-          </Bar>
-        </BarChart>
+        <ScatterChart margin={{ top: 10, right: 10, bottom: 5, left: -10 }}>
+          <CartesianGrid stroke={C.borderLite} strokeDasharray="3 3" vertical={false} />
+          <XAxis 
+            type="number" 
+            dataKey="x" 
+            name="Trade #" 
+            tick={{ fill: C.text, fontSize: 9, fontFamily: FONT.mono }} 
+            axisLine={{ stroke: C.borderLite }} 
+            tickLine={false} 
+            tickFormatter={(v) => `#${v}`}
+          />
+          <YAxis 
+            type="number" 
+            dataKey="y" 
+            name="PnL" 
+            tick={{ fill: C.text, fontSize: 9, fontFamily: FONT.mono }} 
+            axisLine={false} 
+            tickLine={false} 
+            width={45} 
+            tickFormatter={fmtYAxis}
+          />
+          <Tooltip 
+            cursor={{ strokeDasharray: "3 3" }} 
+            content={<CustomChartTooltip />}
+          />
+          <ReferenceLine y={0} stroke={C.borderLite} strokeWidth={1} strokeDasharray="5 5" />
+          <Scatter name="Trades" data={scatterData}>
+            {scatterData.map((entry, index) => {
+              const dotColor = entry.isBreakeven ? "#64748B" : (entry.isWin ? "#1D4ED8" : "#F5455C");
+              return <Cell key={`cell-${index}`} fill={dotColor} />;
+            })}
+          </Scatter>
+        </ScatterChart>
       </ResponsiveContainer>
     </Card>
   );
