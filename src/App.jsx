@@ -148,22 +148,37 @@ function assetName(t){ return t.asset === "Custom" ? (t.customAsset || "Custom")
 function strategyName(t){ return t.strategy === "Custom" ? (t.customStrategy || "Custom") : t.strategy; }
 
 function calcDurationMin(t) {
+  if (!t.entryTime || !t.exitTime || typeof t.entryTime !== "string" || typeof t.exitTime !== "string" || !t.entryTime.includes(":") || !t.exitTime.includes(":")) {
+    return 0;
+  }
   const [eh, em] = t.entryTime.split(":").map(Number);
   const [xh, xm] = t.exitTime.split(":").map(Number);
+  if (isNaN(eh) || isNaN(em) || isNaN(xh) || isNaN(xm)) {
+    return 0;
+  }
   let start = eh * 60 + em, end = xh * 60 + xm;
   if (end < start) end += 24 * 60;
   return Math.max(end - start, 0);
 }
 
 function calcSession(entryTime, entryDate = new Date()) {
+    if (!entryTime || typeof entryTime !== "string" || !entryTime.includes(":")) {
+        return "Unknown";
+    }
     // Parse entry date
     const baseDate = new Date(entryDate);
+    if (isNaN(baseDate.getTime())) {
+        return "Unknown";
+    }
     const y = baseDate.getFullYear();
     const m = String(baseDate.getMonth() + 1).padStart(2, "0");
     const d = String(baseDate.getDate()).padStart(2, "0");
 
     // Convert IST time to UTC
     const utc = new Date(`${y}-${m}-${d}T${entryTime}:00+05:30`);
+    if (isNaN(utc.getTime())) {
+        return "Unknown";
+    }
 
     // Get decimal hour in a timezone
     function getTzHour(date, timeZone) {
@@ -699,8 +714,8 @@ export default function TradingJournal() {
   };
 
   const saveTrade = async () => {
-    if (!draft.entryPrice || !draft.exitPrice || !draft.size) {
-      showToast("Entry price, exit price and size are required");
+    if (!draft.date || !draft.entryTime || !draft.entryPrice || !draft.exitPrice || !draft.size || !draft.direction) {
+      showToast("Date, Entry Time, Entry Price, Exit Price, Size, and Direction are required");
       return;
     }
     if (!user) return;
