@@ -116,6 +116,9 @@ const DEFAULT_SETTINGS = {
   monthlyGoal: 1000,
   dailyMaxLoss: 300,
   riskPercent: 1,
+  accounts: [
+    { name: "Default Account", startingBalance: 10000 }
+  ]
 };
 
 const emptyDraft = (settings) => ({
@@ -141,6 +144,7 @@ const emptyDraft = (settings) => ({
   entryFee: "",
   exitFee: "",
   isBreakeven: false,
+  account: settings.accounts && settings.accounts.length ? settings.accounts[0].name : "Default Account",
 });
 
 /* ============================== CALC ENGINE ============================== */
@@ -774,12 +778,30 @@ export default function TradingJournal() {
 
   const editTrade = (t) => { setDraft(t); setPage("entry"); };
 
+  const [selectedAccount, setSelectedAccount] = useState("All");
+
+  // 1. Filter trades by selected account first
+  const filteredByAccount = useMemo(() => {
+    if (selectedAccount === "All") return trades;
+    return trades.filter(t => t.account === selectedAccount);
+  }, [trades, selectedAccount]);
+
+  // 2. Resolve settings per account (overriding startingBalance)
+  const resolvedSettings = useMemo(() => {
+    if (selectedAccount === "All") return settings;
+    const accConfig = settings.accounts?.find(a => a.name === selectedAccount);
+    if (accConfig) {
+      return { ...settings, startingBalance: Number(accConfig.startingBalance) || 0 };
+    }
+    return settings;
+  }, [settings, selectedAccount]);
+
   const filteredByTime = useMemo(() => {
-    if (timeFilter === "All Time") return trades;
+    if (timeFilter === "All Time") return filteredByAccount;
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
     const start = (d) => new Date(now.getFullYear(), now.getMonth(), now.getDate() - d).toISOString().slice(0, 10);
-    return trades.filter((t) => {
+    return filteredByAccount.filter((t) => {
       if (timeFilter === "Today") return t.date === today;
       if (timeFilter === "Last 7 Days") return t.date >= start(7);
       if (timeFilter === "Last 30 Days") return t.date >= start(30);
@@ -793,10 +815,10 @@ export default function TradingJournal() {
       }
       return true;
     });
-  }, [trades, timeFilter, customStart, customEnd]);
+  }, [filteredByAccount, timeFilter, customStart, customEnd]);
 
-  const allTimeStats = useMemo(() => computeStats(trades, settings), [trades, settings]);
-  const stats = useMemo(() => computeStats(filteredByTime, settings), [filteredByTime, settings]);
+  const allTimeStats = useMemo(() => computeStats(filteredByAccount, resolvedSettings), [filteredByAccount, resolvedSettings]);
+  const stats = useMemo(() => computeStats(filteredByTime, resolvedSettings), [filteredByTime, resolvedSettings]);
   const insights = useMemo(() => generateInsights(stats), [stats]);
 
   const exportCSV = () => {
@@ -1061,6 +1083,8 @@ export default function TradingJournal() {
               setCustomStart={setCustomStart}
               customEnd={customEnd}
               setCustomEnd={setCustomEnd}
+              selectedAccount={selectedAccount}
+              setSelectedAccount={setSelectedAccount}
             />
           )}
           {page === "entry" && (
@@ -1086,7 +1110,7 @@ export default function TradingJournal() {
 /* ============================== DASHBOARD ============================== */
 const TIME_FILTERS = ["Today","Last 7 Days","Last 30 Days","This Month","YTD","All Time","Custom"];
 
-function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, customStart, setCustomStart, customEnd, setCustomEnd }) {
+function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, customStart, setCustomStart, customEnd, setCustomEnd, selectedAccount, setSelectedAccount }) {
   const C = React.useContext(ColorContext);
   const [activeTab, setActiveTab] = React.useState("dashboard");
 
@@ -1109,6 +1133,29 @@ function DashboardPage({ stats, insights, timeFilter, setTimeFilter, settings, c
         </p>
       </div>
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 justify-end flex-wrap">
+        {/* Account Selector */}
+        <select 
+          value={selectedAccount} 
+          onChange={(e) => setSelectedAccount(e.target.value)}
+          style={{
+            padding: "6px 12px",
+            borderRadius: 10,
+            background: C.surface,
+            border: `1px solid ${C.border}`,
+            color: C.text,
+            fontSize: 12,
+            fontFamily: FONT.body,
+            fontWeight: 500,
+            cursor: "pointer",
+            outline: "none"
+          }}
+        >
+          <option value="All">All Accounts</option>
+          {(settings.accounts || []).map(acc => (
+            <option key={acc.name} value={acc.name}>{acc.name}</option>
+          ))}
+        </select>
+
         {/* Tab Switcher */}
         <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: C.surface2, border: `1px solid ${C.border}` }}>
           <button
@@ -1354,6 +1401,13 @@ function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) 
       <Card style={{ padding: 22 }}>
         <SectionTitle>Basic Information</SectionTitle>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
+          <Field label="Account">
+            <select style={inputStyle} value={draft.account || "Default Account"} onChange={set("account")}>
+              {(settings.accounts || []).map((acc) => (
+                <option key={acc.name} value={acc.name}>{acc.name}</option>
+              ))}
+            </select>
+          </Field>
           <Field label="Date"><input type="date" style={inputStyle} value={draft.date} onChange={set("date")} /></Field>
           <Field label="Entry Time"><input type="time" style={inputStyle} value={draft.entryTime} onChange={set("entryTime")} /></Field>
           <Field label="Exit Time">
@@ -1757,13 +1811,16 @@ function SettingsPage({ settings, onSave }) {
     monthlyGoal: Number(local.monthlyGoal) || 0,
     dailyMaxLoss: Number(local.dailyMaxLoss) || 0,
     riskPercent: Number(local.riskPercent) || 0,
+    accounts: local.accounts || []
   });
 
   return (
-    <div className="min-w-3xl overflow-hidden">
+    <div className="min-w-3xl overflow-hidden pb-10">
       <h2 style={{ fontFamily: FONT.display, fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Settings</h2>
       <p style={{ fontFamily: FONT.body, fontSize: 13, color: C.textDim, marginBottom: 20 }}>Defaults used to auto-populate trade entry and calculations.</p>
+      
       <Card style={{ padding: 22 }}>
+        <SectionTitle icon={SettingsIcon}>General Defaults</SectionTitle>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Default Exchange">
             <select style={inputStyle} value={local.defaultExchange} onChange={set("defaultExchange")}>
@@ -1774,15 +1831,99 @@ function SettingsPage({ settings, onSave }) {
           <Field label="Default Leverage"><input type="number" style={inputStyle} value={local.defaultLeverage} onChange={set("defaultLeverage")} /></Field>
           <Field label="Account Currency"><input style={inputStyle} value={local.accountCurrency} onChange={set("accountCurrency")} /></Field>
           <Field label="Default Fee %"><input type="number" step="0.01" style={inputStyle} value={local.feePercent} onChange={set("feePercent")} /></Field>
-          <Field label="Starting Account Balance"><input type="number" style={inputStyle} value={local.startingBalance} onChange={set("startingBalance")} /></Field>
+          <Field label="Starting Account Balance (Fallback)"><input type="number" style={inputStyle} value={local.startingBalance} onChange={set("startingBalance")} /></Field>
           <Field label="Monthly Profit Goal"><input type="number" style={inputStyle} value={local.monthlyGoal} onChange={set("monthlyGoal")} /></Field>
           <Field label="Daily Max Loss"><input type="number" style={inputStyle} value={local.dailyMaxLoss} onChange={set("dailyMaxLoss")} /></Field>
           <Field label="Preferred Risk %"><input type="number" step="0.1" style={inputStyle} value={local.riskPercent} onChange={set("riskPercent")} /></Field>
         </div>
-        <button onClick={save} className="flex items-center gap-2 rounded-lg mt-6" style={{ padding: "10px 20px", background: C.amber, color: "#FFFFFF", fontWeight: 700, fontSize: 13.5, border: "none", cursor: "pointer" }}>
-          <Save size={15} /> Save Settings
+      </Card>
+
+      <Card style={{ padding: 22, marginTop: 20 }}>
+        <SectionTitle icon={PlusCircle}>Prop Firm / Trading Accounts</SectionTitle>
+        <p style={{ fontFamily: FONT.body, fontSize: 13, color: C.textDim, marginBottom: 16 }}>
+          Manage your accounts and their starting balances. The analytics dashboard automatically calculates drawdown and equity relative to these starting balances.
+        </p>
+
+        <div className="flex flex-col gap-3.5 mb-5">
+          {(local.accounts || []).map((acc, idx) => (
+            <div key={idx} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="flex-grow">
+                <label style={{ display: "block", fontSize: 11, color: C.textFaint, marginBottom: 4, textTransform: "uppercase" }}>Account Name</label>
+                <input 
+                  type="text" 
+                  style={inputStyle} 
+                  value={acc.name} 
+                  onChange={(e) => {
+                    const nextAccs = [...(local.accounts || [])];
+                    nextAccs[idx] = { ...acc, name: e.target.value };
+                    setLocal({ ...local, accounts: nextAccs });
+                  }} 
+                  placeholder="e.g. 100k Challenge" 
+                />
+              </div>
+              <div style={{ width: 220 }}>
+                <label style={{ display: "block", fontSize: 11, color: C.textFaint, marginBottom: 4, textTransform: "uppercase" }}>Starting Balance ($)</label>
+                <input 
+                  type="number" 
+                  style={inputStyle} 
+                  value={acc.startingBalance} 
+                  onChange={(e) => {
+                    const nextAccs = [...(local.accounts || [])];
+                    nextAccs[idx] = { ...acc, startingBalance: Number(e.target.value) || 0 };
+                    setLocal({ ...local, accounts: nextAccs });
+                  }} 
+                  placeholder="10000" 
+                />
+              </div>
+              <button 
+                type="button"
+                onClick={() => {
+                  const nextAccs = (local.accounts || []).filter((_, i) => i !== idx);
+                  setLocal({ ...local, accounts: nextAccs });
+                }}
+                className="self-end p-2.5 rounded-lg hover:text-red-500 flex items-center justify-center"
+                style={{ 
+                  background: C.surface2, 
+                  border: `1px solid ${C.border}`, 
+                  color: C.textDim, 
+                  cursor: "pointer", 
+                  height: 38, 
+                  width: 38
+                }}
+                title="Delete Account"
+                disabled={(local.accounts || []).length <= 1}
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <button 
+          type="button"
+          onClick={() => {
+            const nextAccs = [...(local.accounts || []), { name: `Account ${(local.accounts || []).length + 1}`, startingBalance: 10000 }];
+            setLocal({ ...local, accounts: nextAccs });
+          }}
+          className="flex items-center gap-1.5 rounded-lg"
+          style={{ 
+            padding: "8px 14px", 
+            border: `1px solid ${C.border}`, 
+            color: C.text, 
+            fontSize: 12.5, 
+            background: C.surface2, 
+            cursor: "pointer" 
+          }}
+        >
+          <PlusCircle size={14} /> Add Account
         </button>
       </Card>
+
+      <div className="flex justify-end mt-5">
+        <button onClick={save} className="flex items-center gap-2 rounded-lg" style={{ padding: "10px 22px", background: C.amber, color: "#FFFFFF", fontWeight: 700, fontSize: 13.5, border: "none", cursor: "pointer" }}>
+          <Save size={15} /> Save All Settings
+        </button>
+      </div>
     </div>
   );
 }
