@@ -111,7 +111,8 @@ const DEFAULT_SETTINGS = {
   defaultMarket: "Crypto",
   defaultLeverage: 1,
   accountCurrency: "USD",
-  feePercent: 0.05,
+  defaultEntryFeePercent: 0.03,
+  defaultExitFeePercent: 0.03,
   startingBalance: 10000,
   monthlyGoal: 1000,
   dailyMaxLoss: 300,
@@ -242,7 +243,18 @@ function calcPnL(t, settings) {
   const entry = Number(t.entryPrice) || 0;
   const totalSize = Number(t.size) || 0;
   const lev = Number(t.leverage) || 1;
-  const feePct = settings.feePercent ?? 0.05;
+
+  const entryFeePct = t.entryFeePercent !== undefined 
+    ? t.entryFeePercent 
+    : (settings.defaultEntryFeePercent !== undefined 
+        ? settings.defaultEntryFeePercent 
+        : (settings.feePercent !== undefined ? settings.feePercent / 2 : 0.03));
+
+  const exitFeePct = t.exitFeePercent !== undefined 
+    ? t.exitFeePercent 
+    : (settings.defaultExitFeePercent !== undefined 
+        ? settings.defaultExitFeePercent 
+        : (settings.feePercent !== undefined ? settings.feePercent / 2 : 0.03));
 
   let gross = 0;
   let totalFees = 0;
@@ -280,18 +292,18 @@ function calcPnL(t, settings) {
   if (hasManualEntryFee || hasManualExitFee) {
     totalFees = (Number(t.entryFee) || 0) + (Number(t.exitFee) || 0);
   } else {
-    // Auto-calculate fees
+    // Auto-calculate fees using separate entry and exit percentages
     processedPartials.forEach((p) => {
       const entryNotional = entry * p.size;
       const exitNotional = p.price * p.size;
-      totalFees += (entryNotional + exitNotional) * (feePct / 100);
+      totalFees += entryNotional * (entryFeePct / 100) + exitNotional * (exitFeePct / 100);
     });
 
     if (remainingSize > 0) {
       const exit = Number(t.exitPrice) || 0;
       const entryNotional = entry * remainingSize;
       const exitNotional = exit * remainingSize;
-      totalFees += (entryNotional + exitNotional) * (feePct / 100);
+      totalFees += entryNotional * (entryFeePct / 100) + exitNotional * (exitFeePct / 100);
     }
   }
 
@@ -723,7 +735,16 @@ export default function TradingJournal() {
       return;
     }
     if (!user) return;
-    const record = { ...draft, feePercent: settings.feePercent };
+    const activeAccounts = settings.accounts || [];
+    const defaultAccountName = activeAccounts.length ? activeAccounts[0].name : "Default Account";
+    const record = { 
+      ...draft, 
+      entryFeePercent: settings.defaultEntryFeePercent !== undefined ? settings.defaultEntryFeePercent : 0.03,
+      exitFeePercent: settings.defaultExitFeePercent !== undefined ? settings.defaultExitFeePercent : 0.03,
+      account: draft.account && activeAccounts.some(a => a.name === draft.account) 
+        ? draft.account 
+        : defaultAccountName
+    };
     try {
       if (record.id) {
         const { id, ...data } = record;
@@ -782,9 +803,14 @@ export default function TradingJournal() {
 
   // 1. Filter trades by selected account first
   const filteredByAccount = useMemo(() => {
+    const activeAccounts = settings.accounts || [];
+    const defaultAccountName = activeAccounts.length ? activeAccounts[0].name : "Default Account";
     if (selectedAccount === "All") return trades;
-    return trades.filter(t => t.account === selectedAccount);
-  }, [trades, selectedAccount]);
+    return trades.filter(t => {
+      const acc = t.account && activeAccounts.some(a => a.name === t.account) ? t.account : defaultAccountName;
+      return acc === selectedAccount;
+    });
+  }, [trades, selectedAccount, settings.accounts]);
 
   // 2. Resolve settings per account (overriding startingBalance)
   const resolvedSettings = useMemo(() => {
@@ -1402,7 +1428,11 @@ function EntryPage({ draft, setDraft, onSave, onDuplicate, onReset, settings }) 
         <SectionTitle>Basic Information</SectionTitle>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
           <Field label="Account">
-            <select style={inputStyle} value={draft.account || "Default Account"} onChange={set("account")}>
+            <select 
+              style={inputStyle} 
+              value={draft.account && (settings.accounts || []).some(a => a.name === draft.account) ? draft.account : (settings.accounts?.[0]?.name || "Default Account")} 
+              onChange={set("account")}
+            >
               {(settings.accounts || []).map((acc) => (
                 <option key={acc.name} value={acc.name}>{acc.name}</option>
               ))}
@@ -1806,7 +1836,8 @@ function SettingsPage({ settings, onSave }) {
   const save = () => onSave({
     ...local,
     defaultLeverage: Number(local.defaultLeverage) || 1,
-    feePercent: Number(local.feePercent) || 0,
+    defaultEntryFeePercent: Number(local.defaultEntryFeePercent) || 0,
+    defaultExitFeePercent: Number(local.defaultExitFeePercent) || 0,
     startingBalance: Number(local.startingBalance) || 0,
     monthlyGoal: Number(local.monthlyGoal) || 0,
     dailyMaxLoss: Number(local.dailyMaxLoss) || 0,
@@ -1830,7 +1861,8 @@ function SettingsPage({ settings, onSave }) {
           <Field label="Default Market"><input  style={inputStyle} value={local.defaultMarket} onChange={set("defaultMarket") } /></Field>
           <Field label="Default Leverage"><input type="number" style={inputStyle} value={local.defaultLeverage} onChange={set("defaultLeverage")} /></Field>
           <Field label="Account Currency"><input style={inputStyle} value={local.accountCurrency} onChange={set("accountCurrency")} /></Field>
-          <Field label="Default Fee %"><input type="number" step="0.01" style={inputStyle} value={local.feePercent} onChange={set("feePercent")} /></Field>
+          <Field label="Default Entry Fee %"><input type="number" step="0.001" style={inputStyle} value={local.defaultEntryFeePercent || ""} onChange={set("defaultEntryFeePercent")} /></Field>
+          <Field label="Default Exit Fee %"><input type="number" step="0.001" style={inputStyle} value={local.defaultExitFeePercent || ""} onChange={set("defaultExitFeePercent")} /></Field>
           <Field label="Starting Account Balance (Fallback)"><input type="number" style={inputStyle} value={local.startingBalance} onChange={set("startingBalance")} /></Field>
           <Field label="Monthly Profit Goal"><input type="number" style={inputStyle} value={local.monthlyGoal} onChange={set("monthlyGoal")} /></Field>
           <Field label="Daily Max Loss"><input type="number" style={inputStyle} value={local.dailyMaxLoss} onChange={set("dailyMaxLoss")} /></Field>
